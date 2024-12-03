@@ -1,12 +1,21 @@
 // Parameters
-real L = 1.0; // Dimensão do lado da cavidade unitária
+real L = 1.0; 
 
 // Building Square
 mesh Th = square(10, 10, [x*L, y*L]); 
 
 // Plot Square
-plot(Th, wait=1, fill=1);
+// plot(Th, wait=1, fill=1);
 
 // Boundary conditions
 fespace Vh(Th, [P1, P1]);
-Vh [vx, vy], [vx_teste, vy_teste];
+Vh [vx, vy], [vxTeste, vyTeste];
+
+solve velocity([vx, vy], [vxTeste, vyTeste]) = 
+    int2d(Th)(dx(vx)*dx(vxTeste) + dy(vx)*dy(vxTeste) + 
+        dx(vy)*dx(vyTeste) + dy(vy)*dy(vyTeste)) + 
+    on(3, vx=1, vy=0) + 
+    on(1, 2, 4, vx=0, vy=0);
+
+plot(vx, wait=1, fill=1, value=true);
+plot(vy, wait=1, fill=1, value=true);
