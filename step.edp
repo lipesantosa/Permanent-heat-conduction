@@ -1,0 +1,34 @@
+// Mesh
+border a(t=1, 2) {x=t; y=0;}        //Top
+border b(t=0, 2) {x=2; y=t;}        //Top left 
+border c(t=0, 2) {x=2-t; y=2;}      //Mid
+border d(t=0, 1) {x=0; y=2-t;}      //Bottom left
+border e(t=0, 1) {x=t; y=1;}        //Bottom
+border f(t=0, 1) {x=1; y=1-t;}      //Right
+
+
+// Plot mesh
+mesh Th = buildmesh(a(10) + b(10) + c(10) + d(10) + e(10) + f(10)); 
+
+plot(Th, wait=0, fill=0);
+
+// Functions space                     
+fespace Vh(Th, [P1,P1]);
+Vh [vx, vy], [vxTeste, vyTeste];
+
+// Boundary Conditions
+func parabola = y^2;
+
+solve velocity([vx, vy], [vxTeste, vyTeste]) =
+    int2d(Th)(dx(vx)*dx(vxTeste) + dx(vy)*dx(vyTeste) + 
+              dy(vx)*dy(vxTeste) + dy(vy)*dy(vyTeste)) +
+    on(a, c, e, f, vx=0, vy=0) + 
+    on(d, vx=parabola, vy=0) + 
+    int2d(Th, b)(vxTeste + vyTeste);
+
+// Plot
+plot([vx, vy], wait=1, fill=1, cmm="Step"); 
+
+// Alternative
+// plot(vx, wait=1, fill=1, cmm="Velocity in x");
+// plot(vy, wait=1, fill=1, cmm="Velocity in y");
