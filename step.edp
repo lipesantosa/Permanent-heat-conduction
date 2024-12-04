@@ -1,14 +1,23 @@
+// Libraries
+load "iovtk"
+
+//Parameters
+int i = 0;
+int h = 1;
+int j = 2;
+int n =10;
+
 // Mesh
-border a(t=1, 2) {x=t; y=0;}        //Top
-border b(t=0, 2) {x=2; y=t;}        //Top left 
-border c(t=0, 2) {x=2-t; y=2;}      //Mid
-border d(t=0, 1) {x=0; y=2-t;}      //Bottom left
-border e(t=0, 1) {x=t; y=1;}        //Bottom
-border f(t=0, 1) {x=1; y=1-t;}      //Right
+border a(t=h, j) {x=t; y=0;}        //Bottom
+border b(t=i, j) {x=2; y=t;}        //Right 
+border c(t=i, j) {x=2-t; y=2;}      //Top
+border d(t=i, h) {x=0; y=2-t;}      //Top left
+border e(t=i, h) {x=t; y=1;}        //mid
+border f(t=i, h) {x=1; y=1-t;}      //Bottom left
 
 
 // Plot mesh
-mesh Th = buildmesh(a(10) + b(10) + c(10) + d(10) + e(10) + f(10)); 
+mesh Th = buildmesh(a(n) + b(n) + c(n) + d(n) + e(n) + f(n)); 
 
 plot(Th, wait=0, fill=0);
 
@@ -17,7 +26,7 @@ fespace Vh(Th, [P1,P1]);
 Vh [vx, vy], [vxTeste, vyTeste];
 
 // Boundary Conditions
-func parabola = y^2;
+func  parabola = -y^2 + 3*y - 2;
 
 solve velocity([vx, vy], [vxTeste, vyTeste]) =
     int2d(Th)(dx(vx)*dx(vxTeste) + dx(vy)*dx(vyTeste) + 
@@ -27,8 +36,10 @@ solve velocity([vx, vy], [vxTeste, vyTeste]) =
     int2d(Th, b)(vxTeste + vyTeste);
 
 // Plot
-plot([vx, vy], wait=1, fill=1, cmm="Step"); 
+plot([vx, vy], wait=1, fill=1, value=true, cmm="Step"); 
 
 // Alternative
 // plot(vx, wait=1, fill=1, cmm="Velocity in x");
 // plot(vy, wait=1, fill=1, cmm="Velocity in y");
+
+savevtk("D:/Documentos/Permanent-heat-conduction/data/step.vtk", Th, [vx, vy]);
