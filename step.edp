@@ -5,7 +5,7 @@ load "iovtk"
 int i = 0;
 int h = 1;
 int j = 2;
-int n =10;
+int n = 10;
 
 // Mesh
 border a(t=h, j) {x=t; y=0;}        //Bottom
@@ -26,7 +26,7 @@ fespace Vh(Th, [P1,P1]);
 Vh [vx, vy], [vxTeste, vyTeste];
 
 // Boundary Conditions
-func  parabola = -y^2 + 3*y - 2;
+func parabola = -y^2 + 3*y - 2;
 
 solve velocity([vx, vy], [vxTeste, vyTeste]) =
     int2d(Th)(dx(vx)*dx(vxTeste) + dx(vy)*dx(vyTeste) + 
@@ -43,3 +43,19 @@ plot([vx, vy], wait=1, fill=1, value=true, cmm="Step");
 // plot(vy, wait=1, fill=1, cmm="Velocity in y");
 
 savevtk("D:/Documentos/Permanent-heat-conduction/data/step.vtk", Th, [vx, vy]);
+
+// Save archive in txt
+ofstream dataStep("D:/Documentos/Permanent-heat-conduction/data/data_step.txt");
+
+dataStep << "x                      |y                      |vx                     |vy         " << endl;
+
+for (int i = 0; i < Th.nv; i++) { 
+    real xVal = Th(i).x;  
+    real yVal = Th(i).y; 
+    real vxVal = vx[](i); 
+    real vyVal = vy[](i); 
+
+    dataStep << xVal << "                   |" << yVal << "                     |" << vxVal << "                        |" << vyVal << endl;
+}
+
+cout << "Arquivo 'data_step.txt' salvo com sucesso!" << endl;

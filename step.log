@@ -1,0 +1,78 @@
+-- FreeFem++ v4.6 (Fri, Apr 03, 2020  2:08:08 PM - git v4.6)
+ Load: lg_fem lg_mesh lg_mesh3 eigenvalue
+    1 : // Libraries
+    2 : load "iovtk"(load: loadLibary D:\Arquivos de Programas\FreeFem++\\.\iovtk = 0) load: iovtk
+ 
+    3 :
+    4 : //Parameters
+    5 : int i = 0;
+    6 : int h = 1;
+    7 : int j = 2;
+    8 : int n =10;
+    9 :
+   10 : // Mesh
+   11 : border a(t=h, j) {x=t; y=0;}        //Bottom
+   12 : border b(t=i, j) {x=2; y=t;}        //Right
+   13 : border c(t=i, j) {x=2-t; y=2;}      //Top
+   14 : border d(t=i, h) {x=0; y=2-t;}      //Top left
+   15 : border e(t=i, h) {x=t; y=1;}        //mid
+   16 : border f(t=i, h) {x=1; y=1-t;}      //Bottom left
+   17 :
+   18 :
+   19 : // Plot mesh
+   20 : mesh Th = buildmesh(a(n) + b(n) + c(n) + d(n) + e(n) + f(n));
+   21 :
+   22 : plot(Th, wait=0, fill=0);
+   23 :
+   24 : // Functions space
+   25 : fespace Vh(Th, [P1,P1]);
+   26 : Vh [vx, vy], [vxTeste, vyTeste];
+   27 :
+   28 : // Boundary Conditions
+   29 : func  parabola = -y^2 + 3*y - 2;
+   30 :
+   31 : solve velocity([vx, vy], [vxTeste, vyTeste]) =
+   32 :     int2d(Th)(dx(vx)*dx(vxTeste) + dx(vy)*dx(vyTeste) +
+   33 :               dy(vx)*dy(vxTeste) + dy(vy)*dy(vyTeste)) +
+   34 :     on(a, c, e, f, vx=0, vy=0) +
+   35 :     on(d, vx=parabola, vy=0) +
+   36 :     int2d(Th, b)(vxTeste + vyTeste);
+   37 :
+   38 : // Plot
+   39 : plot([vx, vy], wait=1, fill=1, value=true, cmm="Step");
+   40 :
+   41 : // Alternative
+   42 : // plot(vx, wait=1, fill=1, cmm="Velocity in x");
+   43 : // plot(vy, wait=1, fill=1, cmm="Velocity in y");
+   44 :
+   45 : savevtk("D:/Documentos/Permanent-heat-conduction/data/step
+  ... : .vtk", Th, [vx, vy]);
+   46 :
+   47 : ofstream dataStep("D:/Documentos/Permanent-heat-conduction/data/data
+  ... : _step.txt");
+   48 :
+   49 : dataStep << "x                      |y                      |v
+  ... : x                     |vy         " << endl;
+   50 :
+   51 : for (int i = 0; i < Th.nv; i++) {
+   52 :     real xVal = Th(i).x;
+   53 :     real yVal = Th(i).y;
+   54 :     real vxVal = vx[](i);
+   55 :     real vyVal = vy[](i);
+   56 :
+   57 :     dataStep << xVal << "                   |" << yVal << "                     |" << vxVal << "
+        |" << vyVal << endl;
+   58 : }
+   59 :
+   60 : cout << "Arquivo 'data_step.txt' salvo com sucesso!" << endl; sizestack + 1024 =2016  ( 992 )
+ 
+  --  mesh:  Nb of Triangles =    340, Nb of Vertices 201
+  -- Solve :
+          min 0  max 0.249931
+ 0x10efb3a0 VTK_FILE 1
+Arquivo 'data_step.txt' salvo com sucesso!
+times: compile 0.113s, execution 0.088s,  mpirank:0
+ ######## We forget of deleting   -606 Nb pointer,   0Bytes  ,  mpirank 0, memory leak =0
+ CodeAlloc : nb ptr  3763,  size :484472 mpirank: 0
+Ok: Normal End
+ try getConsole D:\Documentos\Permanent-heat-conduction\step.edp
