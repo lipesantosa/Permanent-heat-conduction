@@ -5,7 +5,7 @@ load "iovtk"
 int i = 0;
 int h = 1;
 int j = 2;
-int n = 10;
+int n = 60;
 
 // Mesh
 border a(t=h, j) {x=t; y=0;}        //Bottom
@@ -26,13 +26,15 @@ fespace Vh(Th, [P1,P1]);
 Vh [vx, vy], [vxTeste, vyTeste];
 
 // Boundary Conditions
-func parabola = y^2 - 3*y + 3;
+func parabola = -3*(y-1)*(y-2);
+func bottomvelocity = 0.5 * (1 - y);
+
 
 solve velocity([vx, vy], [vxTeste, vyTeste]) =
     int2d(Th)(dx(vx)*dx(vxTeste) + dx(vy)*dx(vyTeste) + 
               dy(vx)*dy(vxTeste) + dy(vy)*dy(vyTeste)) +
     on(a, c, e, f, vx=0, vy=0) + 
-    on(d, vx= parabola, vy=0) + 
+    on(d, vx=parabola, vy=bottomvelocity) + 
     int2d(Th, b)(vxTeste + vyTeste);
 
 // Plot
