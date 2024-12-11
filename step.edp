@@ -26,21 +26,21 @@ fespace Vh(Th, [P1,P1]);
 Vh [vx, vy], [vxTeste, vyTeste];
 
 // Boundary Conditions
-func parabola = -y^2 + 3*y - 2;
+func parabola = y^2 - 3*y + 3;
 
 solve velocity([vx, vy], [vxTeste, vyTeste]) =
     int2d(Th)(dx(vx)*dx(vxTeste) + dx(vy)*dx(vyTeste) + 
               dy(vx)*dy(vxTeste) + dy(vy)*dy(vyTeste)) +
     on(a, c, e, f, vx=0, vy=0) + 
-    on(d, vx=parabola, vy=0) + 
+    on(d, vx= parabola, vy=0) + 
     int2d(Th, b)(vxTeste + vyTeste);
 
 // Plot
-plot([vx, vy], wait=1, fill=1, value=true, cmm="Step"); 
+// plot([vx, vy], wait=1, fill=1, value=true, cmm="Step"); 
 
 // Alternative
-// plot(vx, wait=1, fill=1, cmm="Velocity in x");
-// plot(vy, wait=1, fill=1, cmm="Velocity in y");
+plot(vx, wait=1, fill=1, cmm="Velocity in x");
+plot(vy, wait=1, fill=1, cmm="Velocity in y");
 
 savevtk("D:/Documentos/Permanent-heat-conduction/data/step.vtk", Th, [vx, vy]);
 

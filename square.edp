@@ -1,3 +1,4 @@
+// Libraries
 load "iovtk"
 
 // Parameters
@@ -27,11 +28,11 @@ solve velocity([vx, vy], [vxTeste, vyTeste]) =
     on(c, vx=1, vy=0) + 
     on(a, b, d, vx=0, vy=0);
 
-plot([vx, vy], wait=1, fill=0, cmm="Step");
+// plot([vx, vy], wait=1, fill=0, cmm="Square");
 
 // // Alternative
-// plot(vx, wait=1, fill=1, cmm="Velocity in x");
-// plot(vy, wait=1, fill=1, cmm="Velocity in y");
+plot(vx, wait=1, fill=1, cmm="Velocity in x");
+plot(vy, wait=1, fill=1, cmm="Velocity in y");
 
 savevtk("D:/Documentos/Permanent-heat-conduction/data/square.vtk", Th, [vx, vy]);
 
