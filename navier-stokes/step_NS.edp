@@ -1,0 +1,39 @@
+// Libraries
+load "iovtk"
+
+// Parameters
+int h = 5;
+int i = 0;
+int j = 20;
+int k = 2;
+int l = 1;
+int n = 50;
+
+// Mesh
+border a(t=h, j) {x=t; y=0; label=1;}        //Bottom
+border b(t=i, k) {x=j; y=t; label=2;}        //Right 
+border c(t=i, j) {x=j-t; y=k; label=3;}      //Top
+border d(t=i, l) {x=i; y=2-t; label=4;}      //Top left
+border e(t=i, h) {x=t; y=l; label=5;}        //mid
+border f(t=i, l) {x=h; y=1-t; label=6;}      //Bottom left
+
+mesh Th = buildmesh(a(n) + b(n) + c(n) + d(n) + e(n) + f(n)); 
+
+// Fespace
+fespace Xh(Th, P2);
+Xh, u1, u2;
+Xh, v1, v2;
+Xh du1, du2;
+Xh u1p, u2p;
+
+fespace Mh(Th, P1);
+Mh p;
+Mh q;
+Mh dp;
+Mh dpp;
+
+// Macro
+macro Grad(u1,u2) [dx(u1), dy(u1), dx(u2), dy(u2)] //
+macro UgradV(u1,u2,v1,v2) [[u1,u2]'*[dx(v1), dy(v1)],
+                        [u1,u2]'*[dx(v2), dy(v2)]] //
+macro div(u1,u2) (dx(u1) + dy(u2)) //

@@ -29,48 +29,53 @@
    26 : Vh [vx, vy], [vxTeste, vyTeste];
    27 :
    28 : // Boundary Conditions
-   29 : func parabola = y^2 - 3*y + 3;
-   30 :
-   31 : solve velocity([vx, vy], [vxTeste, vyTeste]) =
-   32 :     int2d(Th)(dx(vx)*dx(vxTeste) + dx(vy)*dx(vyTeste) +
-   33 :               dy(vx)*dy(vxTeste) + dy(vy)*dy(vyTeste)) +
-   34 :     on(a, c, e, f, vx=0, vy=0) +
-   35 :     on(d, vx= parabola, vy=0) +
-   36 :     int2d(Th, b)(vxTeste + vyTeste);
-   37 :
-   38 : // Plot
-   39 : // plot([vx, vy], wait=1, fill=1, value=true, cmm="Step");
-   40 :
-   41 : // Alternative
-   42 : plot(vx, wait=1, fill=1, cmm="Velocity in x");
-   43 : plot(vy, wait=1, fill=1, cmm="Velocity in y");
-   44 :
-   45 : savevtk("D:/Documentos/Permanent-heat-conduction/data/step
-  ... : .vtk", Th, [vx, vy]);
+   29 : func parabola = -3*(y-1)*(y-2);
+   30 : func bottomvelocity = 0.5 * (y);
+   31 :
+   32 :
+   33 : solve velocity([vx, vy], [vxTeste, vyTeste]) =
+   34 :     int2d(Th)(dx(vx)*dx(vxTeste) + dx(vy)*dx(vyTeste) +
+   35 :               dy(vx)*dy(vxTeste) + dy(vy)*dy(vyTeste)) +
+   36 :     on(a, c, e, f, vx=0, vy=0) +
+   37 :     on(d, vx=parabola, vy=bottomvelocity) +
+   38 :     int2d(Th, b)(vxTeste + vyTeste);
+   39 :
+   40 : // Plot
+   41 : plot([vx, vy], wait=1, fill=1, value=true, cmm="Step");
+   42 :
+   43 : // Alternative
+   44 : // plot(vx, wait=1, fill=1, cmm="Velocity in x");
+   45 : // plot(vy, wait=1, fill=1, cmm="Velocity in y");
    46 :
-   47 : // Save archive in txt
-   48 : ofstream dataStep("D:/Documentos/Permanent-heat-conduction/data/data
+   47 : savevtk("D:/Documentos/Permanent-heat-conduction/data/step
+  ... : .vtk", Th, [vx, vy]);
+   48 :
+   49 : // Save archive in txt
+   50 : ofstream dataStep("D:/Documentos/Permanent-heat-conduction/data/data
   ... : _step.txt");
-   49 :
-   50 : dataStep << "x                      |y                      |v
-  ... : x                     |vy         " << endl;
    51 :
-   52 : for (int i = 0; i < Th.nv; i++) {
-   53 :     real xVal = Th(i).x;
-   54 :     real yVal = Th(i).y;
-   55 :     real vxVal = vx[](i);
-   56 :     real vyVal = vy[](i);
-   57 :
-   58 :     dataStep << xVal << "                   |" << yVal << "                     |" << vxVal << "
+   52 : dataStep << "x                      |y                      |v
+  ... : x                     |vy         " << endl;
+   53 :
+   54 : for (int i = 0; i < Th.nv; i++) {
+   55 :     real xVal = Th(i).x;
+   56 :     real yVal = Th(i).y;
+   57 :     real vxVal = vx[](i);
+   58 :     real vyVal = vy[](i);
+   59 :
+   60 :     dataStep << xVal << "                   |" << yVal << "                     |" << vxVal << "
         |" << vyVal << endl;
-   59 : }
-   60 :
-   61 : cout << "Arquivo 'data_step.txt' salvo com sucesso!" << endl; sizestack + 1024 =2016  ( 992 )
+   61 : }
+   62 :
+   63 : cout << "Arquivo 'data_step.txt' salvo com sucesso!" << endl; sizestack + 1024 =2016  ( 992 )
  
   --  mesh:  Nb of Triangles =    340, Nb of Vertices 201
   -- Solve :
-          min 0  max 1
- 0x10e8b250 VTK_FILE 1
+          min 1.17775e-64  max 1
+ 0x82b400 VTK_FILE 1
 Arquivo 'data_step.txt' salvo com sucesso!
-times: compile 0.069s, execution 0.16s,  mpirank:0
+times: compile 0.072s, execution 0.057s,  mpirank:0
+ ######## We forget of deleting   -606 Nb pointer,   0Bytes  ,  mpirank 0, memory leak =0
+ CodeAlloc : nb ptr  3764,  size :484496 mpirank: 0
+Ok: Normal End
  try getConsole D:\Documentos\Permanent-heat-conduction\step.edp
