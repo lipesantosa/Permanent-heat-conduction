@@ -9,31 +9,47 @@ int k = 2;
 int l = 1;
 int n = 50;
 
+real mu = 1.0; 
+
+func fx = 0;   
+func fy = 0; 
+
 // Mesh
-border a(t=h, j) {x=t; y=0; label=1;}        //Bottom
-border b(t=i, k) {x=j; y=t; label=2;}        //Right 
-border c(t=i, j) {x=j-t; y=k; label=3;}      //Top
-border d(t=i, l) {x=i; y=2-t; label=4;}      //Top left
-border e(t=i, h) {x=t; y=l; label=5;}        //mid
-border f(t=i, l) {x=h; y=1-t; label=6;}      //Bottom left
+border a(t=h, j) {x=t; y=0; label=1;}        
+border b(t=i, k) {x=j; y=t; label=2;}       
+border c(t=i, j) {x=j-t; y=k; label=3;}     
+border d(t=i, l) {x=i; y=2-t; label=4;}      
+border e(t=i, h) {x=t; y=l; label=5;}        
+border f(t=i, l) {x=h; y=1-t; label=6;}      
 
 mesh Th = buildmesh(a(n) + b(n) + c(n) + d(n) + e(n) + f(n)); 
 
 // Fespace
-fespace Xh(Th, P2);
-Xh, u1, u2;
-Xh, v1, v2;
-Xh du1, du2;
-Xh u1p, u2p;
+fespace Uh(Th, P2);
+Uh u1, u2;
+Uh v1, v2;
 
-fespace Mh(Th, P1);
-Mh p;
-Mh q;
-Mh dp;
-Mh dpp;
+fespace Ph(Th, P1);
+Ph p;
+Ph q;
 
-// Macro
-macro Grad(u1,u2) [dx(u1), dy(u1), dx(u2), dy(u2)] //
-macro UgradV(u1,u2,v1,v2) [[u1,u2]'*[dx(v1), dy(v1)],
-                        [u1,u2]'*[dx(v2), dy(v2)]] //
-macro div(u1,u2) (dx(u1) + dy(u2)) //
+func parabola = -3*(y-1)*(y-2);
+
+problem Stokes([u1, u2, p], [v1, v2, q]) =
+    int2d(Th)(mu * (dx(u1)*dx(v1) + dy(u1)*dy(v1)
+                  + dx(u2)*dx(v2) + dy(u2)*dy(v2))
+              - p*(dx(v1) + dy(v2))
+              - q*(dx(u1) + dy(u2)))
+    + int2d(Th)(fx*v1 + fy*v2)
+    + on(1, 3, 5, 6, u1=0, u2=0) 
+    + on(4, u1=parabola, u2=0)
+    + int2d(Th, 2)(v1 + v2);
+
+Stokes;
+
+// Plot 
+plot([u1,u2], fill=true, value=true, wait=false);
+plot(p, wait=true, nbiso=1000, dim=3);
+
+savevtk("Step_NS_Vel.vtk", Th, [u1, u2]);
+savevtk("Step_NS_Pres.vtk", Th, p);

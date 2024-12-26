@@ -1,0 +1,65 @@
+-- FreeFem++ v4.6 (Fri, Apr 03, 2020  2:08:08 PM - git v4.6)
+ Load: lg_fem lg_mesh lg_mesh3 eigenvalue
+    1 : // Libraries
+    2 : load "iovtk"(load: loadLibary D:\Arquivos de Programas\FreeFem++\\.\iovtk = 0) load: iovtk
+ 
+    3 :
+    4 : // Parameters
+    5 : int h = 5;
+    6 : int i = 0;
+    7 : int j = 20;
+    8 : int k = 2;
+    9 : int l = 1;
+   10 : int n = 50;
+   11 :
+   12 : real mu = 1.0;
+   13 :
+   14 : func fx = 0;
+   15 : func fy = 0;
+   16 :
+   17 : // Mesh
+   18 : border a(t=h, j) {x=t; y=0; label=1;}
+   19 : border b(t=i, k) {x=j; y=t; label=2;}
+   20 : border c(t=i, j) {x=j-t; y=k; label=3;}
+   21 : border d(t=i, l) {x=i; y=2-t; label=4;}
+   22 : border e(t=i, h) {x=t; y=l; label=5;}
+   23 : border f(t=i, l) {x=h; y=1-t; label=6;}
+   24 :
+   25 : mesh Th = buildmesh(a(n) + b(n) + c(n) + d(n) + e(n) + f(n));
+   26 :
+   27 : // Fespace
+   28 : fespace Uh(Th, P2);
+   29 : Uh u1, u2;
+   30 : Uh v1, v2;
+   31 :
+   32 : fespace Ph(Th, P1);
+   33 : Ph p;
+   34 : Ph q;
+   35 :
+   36 : func parabola = -3*(y-1)*(y-2);
+   37 :
+   38 : problem Stokes([u1, u2, p], [v1, v2, q]) =
+   39 :     int2d(Th)(mu * (dx(u1)*dx(v1) + dy(u1)*dy(v1)
+   40 :                   + dx(u2)*dx(v2) + dy(u2)*dy(v2))
+   41 :               - p*(dx(v1) + dy(v2))
+   42 :               - q*(dx(u1) + dy(u2)))
+   43 :     + int2d(Th)(fx*v1 + fy*v2)
+   44 :     + on(1, 3, 5, 6, u1=0, u2=0)
+   45 :     + on(4, u1=parabola, u2=0)
+   46 :     + int2d(Th, 2)(v1 + v2);
+   47 :
+   48 : Stokes;
+   49 :
+   50 : // plot(u1, fill=true, value=true, wait=false, cmm="Velocidade (ux)");
+   51 : plot([u1,u2], p, fill=true, value=true, wait=false, cmm="Velocidade (u)");
+   52 : // plot(p, fill=true, value=true, wait=true, cmm="PressÃ£o (p)");ÿ sizestack + 1024 =2040  ( 1016 )
+ 
+  --  mesh:  Nb of Triangles =   1572, Nb of Vertices 937
+  -- Solve :
+          min -0.00164621  max 0.749997
+          min -0.266054  max 0.00131136
+          min -5.49038e-14  max 43.7698
+times: compile 0.064s, execution 0.18s,  mpirank:0
+ CodeAlloc : nb ptr  3749,  size :485952 mpirank: 0
+Ok: Normal End
+ try getConsole D:\Documentos\Permanent-heat-conduction\navier-stokes\step_NS.edp
