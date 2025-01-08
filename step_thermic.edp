@@ -1,0 +1,42 @@
+// Libraries
+load "iovtk"
+
+// Parameters
+int h = 5;
+int i = 0;
+int j = 20;
+int m = 2;
+int l = 1;
+int n = 50;
+
+real rho = 1;     
+real Cp = 1;      
+real k = 1;      
+
+// Mesh
+border a(t=h, j) {x=t; y=0; label=1;}        
+border b(t=i, m) {x=j; y=t; label=2;}       
+border c(t=i, j) {x=j-t; y=m; label=3;}     
+border d(t=i, l) {x=i; y=2-t; label=4;}      
+border e(t=i, h) {x=t; y=l; label=5;}        
+border f(t=i, l) {x=h; y=1-t; label=6;}      
+
+mesh Th = buildmesh(a(n) + b(n) + c(n) + d(n) + e(n) + f(n)); 
+
+// Fespace
+fespace Vh(Th, P1);
+Vh T, Tn;
+Vh u, v;
+
+// Problem
+problem thermic (T, Tn)
+    = int2d(Th)((rho * Cp * (u * dx(T) + v * dy(T)))) // Convection term
+    + int2d(Th)(k * ((dx(T) * dx(T)) + (dy(T) * dy(T)))) // Diffusion term
+    + on(1, 3, 5, 6, T=0)  // Thermal boundary conditions
+    + on(2, 4, T=100);     
+
+// Solve the problem
+thermic;
+
+// Plot results
+plot(T, fill=true, value=true, wait=true);
