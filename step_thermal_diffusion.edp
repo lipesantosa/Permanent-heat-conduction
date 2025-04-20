@@ -127,4 +127,3 @@ vtkfile << "LOOKUP_TABLE default\n";
 for (int i = 0; i < Th.nv; i++) {
     vtkfile << T[][i] << "\n";
 }
-
