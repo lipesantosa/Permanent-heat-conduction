@@ -64,7 +64,7 @@ while ((err > tol) && (iter < maxIter)){
     )
     + int2d(Th)(fT*w)
     + on(1, T=parabola)
-    + on(3, T=0);
+    + on(2, T=0);
 
   ConvecDiff;
 
