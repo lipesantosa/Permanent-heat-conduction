@@ -1,9 +1,13 @@
+load "iovtk"
+
 // Parameters
 real mu = 1e-3;
 real tol = 1e-6;
 int maxIter = 20;
 
-real kappa = 10;
+real Cp = 1005;    // Specific Heat
+real rho = 1.184;  // Density
+real kappa = 0.0262; // Thermal conductivity
 
 // Mesh 
 border in(t=1, 0){x=-2; y=t; label=1;} 
@@ -15,111 +19,176 @@ border top(t=1, 0){x=-2+20*t; y=1; label=2;}
 
 int m = 20; 
 mesh Th = buildmesh(in(m)+base01(2*m)+right(m)+base02(15*m)+out(2*m)+top(20*m));
-plot(Th);
+//plot(Th);
 
 // Fespace
 fespace Uh(Th, P2); // Velocity
-fespace Ph(Th, P1); // Pression
+fespace Ph(Th, P1); // Pressure
 fespace Kh(Th, P1); // Temperature
 Uh u1, u2, v1, v2;
 Uh u1k, u2k;
 Ph p, q;
 Kh T, w;
 
-// Picard iteration
-int iter = 0;
-real err = 1;
-
+// Functions and initial conditions
 func fx = 0;
 func fy = 0;
-u1k = 0; u2k = 0;
-func uin = y*(1-y);
 func fT = 0;
+func uin = y*(1-y);
 func parabola = 200*y*(1-y);
 
+real t = 0;
+real dt = 1;
+real tmax = 4.0;
+int id = 0;
 
-while ((err > tol) && (iter < maxIter)){
+Uh u1old = 0, u2old = 0;
+Kh Told = 0;
 
-  // Velocity & Pression (Navier-Stokes)
-  problem NavierStokes([u1,u2,p], [v1,v2,q])
-    = int2d(Th)(
-      mu*(dx(u1)*dx(v1) + dy(u1)*dy(v1)
-        + dx(u2)*dx(v2) + dy(u2)*dy(v2))
-      + (u1k*dx(u1) + u2k*dy(u1))*v1
-      + (u1k*dx(u2) + u2k*dy(u2))*v2
-      - p*(dx(v1) + dy(v2))
-      - q*(dx(u1) + dy(u2))
-    )
-    - int2d(Th)(fx*v1 + fy*v2)
-    + on(1, u1=uin, u2=0)
-    + on(2, u1=0, u2=0);
-  
-  NavierStokes;
+real alpha = 1.0/dt;
 
-  // Thermic (Convection-Difusion)
-  problem ConvecDiff(T, w)
-    = int2d(Th)(
-      kappa*(dx(T)*dx(w) + dy(T)*dy(w))
-      + (u1*dx(T) + u2*dy(T)) * w
-    )
-    + int2d(Th)(fT*w)
-    + on(1, T=parabola)
-    + on(2, T=0);
+// Time loop
+for (t = 0; t <= tmax; t += dt) {
+    cout << "Time = " << t << endl;
 
-  ConvecDiff;
+    int iter = 0;
+    real err = 1;
+    u1k = u1old;
+    u2k = u2old;
+    Told = Told; // primeira vez Told = 0 mesmo
 
-  // Verify error
-  err = sqrt(int2d(Th)((u1 - u1k)^2 + (u2 - u2k)^2));
-  u1k = u1;
-  u2k = u2;
+    // Picard iterations
+    while ((err > tol) && (iter < maxIter)) {
 
-  iter += 1;
-  cout << "Picard Iteration " << iter << ", erro =" << err << endl;
-  plot([u1, u2], wait=0, fill=true, value=true, nbiso=20, cmm="velocity");
-  //plot(p, wait=0, fill=true, value=true, nbiso=20, cmm="Pression");
-  plot(T, wait=0, fill=true, value=true, nbiso=20, cmm="Temperature");
+        // Navier-Stokes
+        problem NavierStokes([u1,u2,p], [v1,v2,q])
+          = int2d(Th)(
+              alpha*(u1*v1 + u2*v2)
+            + mu*(dx(u1)*dx(v1) + dy(u1)*dy(v1) + dx(u2)*dx(v2) + dy(u2)*dy(v2))
+            + (u1k*dx(u1) + u2k*dy(u1))*v1
+            + (u1k*dx(u2) + u2k*dy(u2))*v2
+            - p*(dx(v1) + dy(v2))
+            - q*(dx(u1) + dy(u2))
+          )
+          - int2d(Th)(
+              alpha*(u1old*v1 + u2old*v2)
+          )
+          - int2d(Th)(fx*v1 + fy*v2)
+          + on(1, u1=uin, u2=0)
+          + on(2, u1=0, u2=0);
 
-  fespace P1h(Th, P1);
-  P1h u1p = u1;
-  P1h u2p = u2;
-  P1h pp = p;
-  P1h Tp = T;
+        NavierStokes;
 
-  // VTK ARCHIVE
-  ofstream vtkfile("D:/Documentos/Permanent-heat-conduction/saida_corrigida.vtk");
-  vtkfile << "# vtk DataFile Version 3.0" << endl;
-  vtkfile << "Mesh NS-CD Problem" << endl;
-  vtkfile << "ASCII" << endl;
-  vtkfile << "DATASET UNSTRUCTURED_GRID" << endl;
+        // Convection-Diffusion
+        problem ConvecDiff(T, w)
+          = int2d(Th)(
+              rho*Cp * T*w
+            + kappa*(dx(T)*dx(w) + dy(T)*dy(w))
+            + (u1*dx(T) + u2*dy(T)) * w
+          )
+          - int2d(Th)(
+              rho*Cp * Told*w
+          )
+          + int2d(Th)(fT*w)
+          + on(1, T=parabola)
+          + on(2, T=0);
 
-  // Points
-  vtkfile << "POINTS " << Th.nv << " float" << endl;
-  for (int i = 0; i < Th.nv; ++i)
-      vtkfile << Th(i).x << " " << Th(i).y << " 0.0" << endl;
+        ConvecDiff;
 
-  // Cells
-  vtkfile << "CELLS " << Th.nt << " " << 4 * Th.nt << endl;
-  for (int i = 0; i < Th.nt; ++i)
-      vtkfile << "3 " << Th[i][0] << " " << Th[i][1] << " " << Th[i][2] << endl;
+        // Error evaluation
+        err = sqrt(int2d(Th)((u1 - u1k)^2 + (u2 - u2k)^2));
+        cout << "Picard Iteration " << iter << ", err = " << err << endl;
 
-  vtkfile << "CELL_TYPES " << Th.nt << endl;
-  for (int i = 0; i < Th.nt; ++i)
-      vtkfile << "5" << endl;
+        u1k = u1;
+        u2k = u2;
+        iter++;
 
-  // Data (Velocity - Pressure - Temperature)
-  vtkfile << "POINT_DATA " << Th.nv << endl;
+        // Optional plot inside Picard
+        if (iter % 5 == 0) {
+            plot([u1, u2], wait=0, fill=true, value=true, nbiso=20, cmm="Velocity");
+        }
+    }
 
-  vtkfile << "VECTORS Velocity float" << endl;
-  for (int i = 0; i < Th.nv; ++i)
-      vtkfile << u1p[][i] << " " << u2p[][i] << " 0.0" << endl;
+    // Update for next time step
+    u1old = u1;
+    u2old = u2;
+    Told = T;
 
-  vtkfile << "SCALARS Pressure float 1" << endl;
-  vtkfile << "LOOKUP_TABLE default" << endl;
-  for (int i = 0; i < Th.nv; ++i)
-      vtkfile << pp[][i] << endl;
+    // Plot after time step
+    plot([u1, u2], wait=0, fill=true, value=true, nbiso=20, cmm="Velocity at t="+t);
+    //plot(p, wait=0, fill=true, value=true, nbiso=20, cmm="Pressure at t="+t);
+    //plot(T, wait=0, fill=true, value=true, nbiso=20, cmm="Temperature at t="+t);
 
-  vtkfile << "SCALARS Temperature float 1" << endl;
-  vtkfile << "LOOKUP_TABLE default" << endl;
-  for (int i = 0; i < Th.nv; ++i)
-      vtkfile << Tp[][i] << endl;
+
+    fespace P1h(Th, P1);
+    P1h u1p = u1;
+    P1h u2p = u2;
+    P1h pp = p;
+    P1h Tp = T;
+
+    // VTK ARCHIVE
+    string datavtk = "D:/Documentos/Permanent-heat-conduction/Time/results_" + t + ".vtk";
+    ofstream vtkfile(datavtk);
+    ofstream pvd("D:/Documentos/Permanent-heat-conduction/saida.pvd");
+    pvd << "<?xml version=\"1.0\"?>\n";
+    pvd << "<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n";
+    pvd << "  <Collection>\n";
+
+    // VTK
+    vtkfile << "# vtk DataFile Version 3.0" << endl;
+    vtkfile << "Mesh NS-CD Problem" << endl;
+    vtkfile << "ASCII" << endl;
+    vtkfile << "DATASET UNSTRUCTURED_GRID" << endl;
+
+    // Points
+    vtkfile << "POINTS " << Th.nv << " float" << endl;
+    for (int i = 0; i < Th.nv; ++i)
+        vtkfile << Th(i).x << " " << Th(i).y << " 0.0" << endl;
+
+    // Cells
+    vtkfile << "CELLS " << Th.nt << " " << 4 * Th.nt << endl;
+    for (int i = 0; i < Th.nt; ++i)
+        vtkfile << "3 " << Th[i][0] << " " << Th[i][1] << " " << Th[i][2] << endl;
+
+    vtkfile << "CELL_TYPES " << Th.nt << endl;
+    for (int i = 0; i < Th.nt; ++i)
+        vtkfile << "5" << endl;
+
+    // Point data
+    vtkfile << "POINT_DATA " << Th.nv << endl;
+
+    // Velocity
+    vtkfile << "VECTORS Velocity float\n";
+    for (int i = 0; i < Th.nv; ++i) {
+        real u1 = u1p(Th(i).x, Th(i).y);
+        real u2 = u2p(Th(i).x, Th(i).y);
+        if (abs(u1) < 1e-12) u1 = 0.0;
+        if (abs(u2) < 1e-12) u2 = 0.0;
+        vtkfile << u1 << " " << u2 << " 0.0\n";
+    }
+
+    // Pressure
+    vtkfile << "SCALARS Pressure float 1\n";
+    vtkfile << "LOOKUP_TABLE default\n";
+    for (int i = 0; i < Th.nv; ++i) {
+        real val = pp(Th(i).x, Th(i).y);
+        if (abs(val) < 1e-12) val = 0.0;
+        vtkfile << val << "\n";
+    }
+
+    // Temperature
+    vtkfile << "SCALARS Temperature float 1\n";
+    vtkfile << "LOOKUP_TABLE default\n";
+    for (int i = 0; i < Th.nv; ++i) {
+        real val = Tp(Th(i).x, Th(i).y);
+        if (abs(val) < 1e-12) val = 0.0;
+        vtkfile << val << "\n";
+    }
+    pvd << "    <DataSet timestep=\"" << tmax << "\" group=\"\" part=\"0\"\n";
+    pvd << "             file=\"" << datavtk << "\"/>\n";
+
+    pvd << "  </Collection>\n";
+    pvd << "</VTKFile>\n";
+
 }
+
