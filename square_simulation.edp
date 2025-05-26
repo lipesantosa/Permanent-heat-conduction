@@ -1,0 +1,234 @@
+load "iovtk"
+
+// Parameters
+real Re = 1000;
+real mu = 1./Re;
+real tol = 1e-6;
+int maxIter = 20;
+
+real Cp = 1005;   
+real rho = 1.184;  
+real kappa = 0.0262; 
+
+// Mesh
+border a01(t=0, 1) {x=t; y=0; label = 3;}
+border a02(t=0, 1) {x=1; y=t; label=4;}
+border a03(t=0, 1) {x=1-t; y=1; label = 1;}
+border a04(t=0, 1) {x=0; y=1-t; label = 2;}
+int n = 129;
+mesh Th = buildmesh(a01(n) + a02(n) + a03(n) + a04(n));
+
+// Fespace
+fespace Uh(Th, P2); // Velocity
+fespace Ph(Th, P1); // Pressure
+fespace Kh(Th, P1); // Temperature
+Uh u1, u2, v1, v2;
+Uh u1k, u2k;
+Ph p, q;
+Kh T, w;
+
+// Functions and initial conditions
+func fx = 0;
+func fy = 0;
+func fT = 0;
+
+Uh u1old = 0, u2old = 0;
+Kh Told = 0;
+
+
+real t = 0;
+real dt = 0.1;
+real tmax = 20.0;
+int id = 0;
+
+real alpha = rho/dt;
+
+// Time loop
+for (t = 0; t <= tmax; t += dt) {
+    cout << "Time = " << t << endl;
+
+    int iter = 0;
+    real err = 1;
+    u1k = u1old;
+    u2k = u2old;
+    Told = Told; 
+
+    // Picard iterations
+    while ((err > tol) && (iter < maxIter)) {
+
+        // Navier-Stokes
+        problem NavierStokes([u1,u2,p], [v1,v2,q])
+          = int2d(Th)(
+              alpha*(u1*v1 + u2*v2)
+            + mu*(dx(u1)*dx(v1) + dy(u1)*dy(v1) + dx(u2)*dx(v2) + dy(u2)*dy(v2))
+            + rho*(u1k*dx(u1) + u2k*dy(u1))*v1
+            + rho* (u1k*dx(u2) + u2k*dy(u2))*v2
+            - p*(dx(v1) + dy(v2))
+            - q*(dx(u1) + dy(u2))
+          )
+          - int2d(Th)(
+              alpha*(u1old*v1 + u2old*v2)
+          )
+          - int2d(Th)(fx*v1 + fy*v2)
+          + on(1, u1=1, u2=0)
+          + on(2,3,4, u1=0, u2=0);
+
+        NavierStokes;
+
+        // Convection-Diffusion
+        problem ConvecDiff(T, w)
+          = int2d(Th)(
+             rho*Cp * (T/dt)*w 
+            + kappa*(dx(T)*dx(w) + dy(T)*dy(w))
+            + rho*Cp *(u1*dx(T) + u2*dy(T)) * w 
+          )
+          - int2d(Th)(
+              rho*Cp * (Told/dt) * w
+          )
+          + int2d(Th)(fT * w)
+          + on(1, T=293)
+          + on(2,3,4, T=0);
+
+        ConvecDiff;
+
+        // Error evaluation
+        err = sqrt(int2d(Th)((u1 - u1k)^2 + (u2 - u2k)^2));
+        cout << "Picard Iteration " << iter << ", err = " << err << endl;
+
+        u1k = u1;
+        u2k = u2;
+        iter++;
+
+        // Optional plot inside Picard
+        if (iter % 5 == 0) {
+            plot([u1, u2], wait=0, fill=true, value=true, nbiso=20, cmm="Velocity");
+        }
+    }
+
+    // Update for next time step
+    u1old = u1;
+    u2old = u2;
+    Told = T;
+
+    // Plot after time step
+    //plot([u1, u2], wait=0, fill=true, value=true, nbiso=20, cmm="Velocity at t="+t);
+    //plot(p, wait=0, fill=true, value=true, nbiso=20, cmm="Pressure at t="+t);
+    plot(T, wait=0, fill=true, value=true, nbiso=20, cmm="Temperature at t="+t);
+
+
+    fespace P1h(Th, P1);
+    P1h u1p = u1;
+    P1h u2p = u2;
+    P1h pp = p;
+    P1h Tp = T;
+
+savevtk("results1000_t"+t+".vtu", Th, [u1, u2], p, T, dataname = "velocity pression temperature");
+//savevtk("results400_t"+t+".vtu", Th, [u1, u2], p, T, dataname = "velocity pression temperature");
+//savevtk("results1000_t"+t+".vtu", Th, [u1, u2], p, T, dataname = "velocity pression temperature");
+
+
+// VTK LEGACY SAVE
+//         // VTK ARCHIVE
+//     string datavtk = "D:/Documentos/Permanent-heat-conduction/Square_Data/VTK-Files/Results_" + t + ".vtk";
+//     ofstream vtkfile(datavtk);
+
+//     // VTK
+//     vtkfile << "# vtk DataFile Version 3.0" << endl;
+//     vtkfile << "Mesh NS-CD Problem" << endl;
+//     vtkfile << "ASCII" << endl;
+//     vtkfile << "DATASET UNSTRUCTURED_GRID" << endl;
+
+//     // Points
+//     vtkfile << "POINTS " << Th.nv << " float" << endl;
+//     for (int i = 0; i < Th.nv; ++i)
+//         vtkfile << Th(i).x << " " << Th(i).y << " 0.0" << endl;
+
+//     // Cells
+//     vtkfile << "CELLS " << Th.nt << " " << 4 * Th.nt << endl;
+//     for (int i = 0; i < Th.nt; ++i)
+//         vtkfile << "3 " << Th[i][0] << " " << Th[i][1] << " " << Th[i][2] << endl;
+
+//     vtkfile << "CELL_TYPES " << Th.nt << endl;
+//     for (int i = 0; i < Th.nt; ++i)
+//         vtkfile << "5" << endl;
+
+//     // Point data
+//     vtkfile << "POINT_DATA " << Th.nv << endl;
+
+//     // Velocity
+//     vtkfile << "VECTORS Velocity float\n";
+//     for (int i = 0; i < Th.nv; ++i) {
+//         real u1 = u1p(Th(i).x, Th(i).y);
+//         real u2 = u2p(Th(i).x, Th(i).y);
+//         if (abs(u1) < 1e-12) u1 = 0.0;
+//         if (abs(u2) < 1e-12) u2 = 0.0;
+//         vtkfile << u1 << " " << u2 << " 0.0\n";
+//     }
+
+//     // Pressure
+//     vtkfile << "SCALARS Pressure float 1\n";
+//     vtkfile << "LOOKUP_TABLE default\n";
+//     for (int i = 0; i < Th.nv; ++i) {
+//         real val = pp(Th(i).x, Th(i).y);
+//         if (abs(val) < 1e-12) val = 0.0;
+//         vtkfile << val << "\n";
+//     }
+
+//     // Temperature
+//     vtkfile << "SCALARS Temperature float 1\n";
+//     vtkfile << "LOOKUP_TABLE default\n";
+//     for (int i = 0; i < Th.nv; ++i) {
+//         real val = Tp(Th(i).x, Th(i).y);
+//         if (abs(val) < 1e-12) val = 0.0;
+//         vtkfile << val << "\n";
+//     }
+}
+
+// Comparation to Ghia: u1 along vertical through Geometric Center of Cavity 
+int npts = 100;
+real[int] uy(npts), y(npts);
+
+for (int i = 0; i < npts; i++) {
+    y[i] = i*1.0/(npts - 1);     
+    uy[i] = u1(0.5, y[i]);       
+}
+
+// Save data to cpmparation
+ofstream fout("perfil_u1_x05_Re1000.txt");
+for (int i = 0; i < npts; i++) {
+    fout << y[i] << " " << uy[i] << endl;
+}
+
+// ofstream fout("perfil_u1_x05_Re400.txt");
+// for (int i = 0; i < npts; i++) {
+//     fout << y[i] << " " << uy[i] << endl;
+// }
+
+// ofstream fout("perfil_u1_x05_Re1000.txt");
+// for (int i = 0; i < npts; i++) {
+//     fout << y[i] << " " << uy[i] << endl;
+// }
+
+
+// Comparation to Ghia: u2 along horizontal through Geometric Center of Cavity 
+real[int] vx(npts), x(npts);
+
+for (int i = 0; i < npts; i++) {
+    x[i] = i*1.0/(npts - 1);     
+    vx[i] = u2(x[i], 0.5);      
+}
+
+ofstream fout2("perfil_u2_y05_Re1000.txt");
+for (int i = 0; i < npts; i++) {
+    fout2 << x[i] << " " << vx[i] << endl;
+}
+
+// ofstream fout2("perfil_u2_y05_Re400.txt");
+// for (int i = 0; i < npts; i++) {
+//     fout2 << x[i] << " " << vx[i] << endl;
+// }
+
+// ofstream fout2("perfil_u2_y05_Re1000.txt");
+// for (int i = 0; i < npts; i++) {
+//     fout2 << x[i] << " " << vx[i] << endl;
+// }

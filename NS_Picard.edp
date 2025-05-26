@@ -43,9 +43,9 @@ real tmax = 4.0;
 int id = 0;
 
 Uh u1old = 0, u2old = 0;
-Kh Told = 0;
+Kh Told = 1;
 
-real alpha = 1.0/dt;
+real alpha = rho/dt;
 
 // Time loop
 for (t = 0; t <= tmax; t += dt) {
@@ -82,12 +82,12 @@ for (t = 0; t <= tmax; t += dt) {
         // Convection-Diffusion
         problem ConvecDiff(T, w)
           = int2d(Th)(
-              rho*Cp * T*w
+              (rho*Cp/dt) * T*w
             + kappa*(dx(T)*dx(w) + dy(T)*dy(w))
             + (u1*dx(T) + u2*dy(T)) * w
           )
           - int2d(Th)(
-              rho*Cp * Told*w
+              (rho*Cp/dt) * Told*w
           )
           + int2d(Th)(fT*w)
           + on(1, T=parabola)
