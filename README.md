@@ -6,13 +6,14 @@ In this work we present a numerical study of heat transport through a moving flu
 
 ## Square Cavity
 ### Domain
-Square cavity with velocity boundary condition Γ_1 = (1,0) on the top (lid) of the cavity, and Γ_2 = (0,0) on the rest of the walls.
+The simulated domain is a unit square cavity with boundary conditions for zero velocity prescribed at the walls and $\mathbf{u} = (1,0) m/s$ at the top.
 
 ---
 
 ## Mathematical Model
 ### Incompressible Navier-Stokes System
 $\rho \left( \frac{\partial \mathbf{u}}{\partial t} + \mathbf{u} \cdot \nabla \mathbf{u} \right) - \nabla \cdot (\mu \nabla \mathbf{u}) + \nabla p = \mathbf{f}$ \
+
 $\nabla \cdot \mathbf{u} = 0$
 
 ### Convection-Diffusion Equation for Temperature
