@@ -21,7 +21,7 @@ Square cavity with velocity boundary condition Γ_1 = (1,0) on the top (lid) of 
 
 ### Convection-Diffusion Equation for Temperature
 \[
-\frac{\partial T}{\partial t} + \mathbf{u} \cdot \nabla T - \nabla \cdot (\kappa \nabla T) = Q
+$\frac{\partial T}{\partial t} + \mathbf{u} \cdot \nabla T - \nabla \cdot (\kappa \nabla T) = Q$
 \]
 
 Where:
