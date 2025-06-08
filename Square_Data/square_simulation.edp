@@ -1,7 +1,7 @@
 load "iovtk"
 
 // Parameters
-real Re = 1000;
+real Re = 100;
 real mu = 1./Re;
 real tol = 1e-6;
 int maxIter = 20;
@@ -33,7 +33,7 @@ func fy = 0;
 func fT = 0;
 
 Uh u1old = 0, u2old = 0;
-Kh Told = 0;
+Kh Told = 273;
 
 
 real t = 0;
@@ -87,7 +87,7 @@ for (t = 0; t <= tmax; t += dt) {
           )
           + int2d(Th)(fT * w)
           + on(1, T=293)
-          + on(2,3,4, T=0);
+          + on(2,3,4, T=273);
 
         ConvecDiff;
 
@@ -122,7 +122,7 @@ for (t = 0; t <= tmax; t += dt) {
     P1h pp = p;
     P1h Tp = T;
 
-savevtk("results1000_t"+t+".vtu", Th, [u1, u2], p, T, dataname = "velocity pression temperature");
+savevtk("results100_t"+t+".vtu", Th, [u1, u2], p, T, dataname = "velocity pressure temperature");
 //savevtk("results400_t"+t+".vtu", Th, [u1, u2], p, T, dataname = "velocity pression temperature");
 //savevtk("results1000_t"+t+".vtu", Th, [u1, u2], p, T, dataname = "velocity pression temperature");
 
@@ -194,23 +194,12 @@ for (int i = 0; i < npts; i++) {
 }
 
 // Save data to cpmparation
-ofstream fout("perfil_u1_x05_Re1000.txt");
+ofstream fout("perfil_u1_x05_Re100.txt");
 for (int i = 0; i < npts; i++) {
     fout << y[i] << " " << uy[i] << endl;
 }
 
-// ofstream fout("perfil_u1_x05_Re400.txt");
-// for (int i = 0; i < npts; i++) {
-//     fout << y[i] << " " << uy[i] << endl;
-// }
-
-// ofstream fout("perfil_u1_x05_Re1000.txt");
-// for (int i = 0; i < npts; i++) {
-//     fout << y[i] << " " << uy[i] << endl;
-// }
-
-
-// Comparation to Ghia: u2 along horizontal through Geometric Center of Cavity 
+// // Comparation to Ghia: u2 along horizontal through Geometric Center of Cavity 
 real[int] vx(npts), x(npts);
 
 for (int i = 0; i < npts; i++) {
@@ -218,17 +207,8 @@ for (int i = 0; i < npts; i++) {
     vx[i] = u2(x[i], 0.5);      
 }
 
-ofstream fout2("perfil_u2_y05_Re1000.txt");
+ofstream fout2("perfil_u2_y05_Re100.txt");
 for (int i = 0; i < npts; i++) {
     fout2 << x[i] << " " << vx[i] << endl;
 }
 
-// ofstream fout2("perfil_u2_y05_Re400.txt");
-// for (int i = 0; i < npts; i++) {
-//     fout2 << x[i] << " " << vx[i] << endl;
-// }
-
-// ofstream fout2("perfil_u2_y05_Re1000.txt");
-// for (int i = 0; i < npts; i++) {
-//     fout2 << x[i] << " " << vx[i] << endl;
-// }
