@@ -12,20 +12,20 @@ Square cavity with velocity boundary condition Γ_1 = (1,0) on the top (lid) of 
 
 ## Mathematical Model
 ### Incompressible Navier-Stokes System
-$\rho \left( \frac{\partial \mathbf{u}}{\partial t} + \mathbf{u} \cdot \nabla \mathbf{u} \right) - \nabla \cdot (\mu(T) \nabla \mathbf{u}) + \nabla p &= \mathbf{f} \\
-\nabla \cdot \mathbf{u} &= 0$
+$\rho \left( \frac{\partial \mathbf{u}}{\partial t} + \mathbf{u} \cdot \nabla \mathbf{u} \right) - \nabla \cdot (\mu(T) \nabla \mathbf{u}) + \nabla p &= \mathbf{f}$
+$\nabla \cdot \mathbf{u} = 0$
 
 ### Convection-Diffusion Equation for Temperature
 $\frac{\partial T}{\partial t} + \mathbf{u} \cdot \nabla T - \nabla \cdot (\kappa \nabla T) = Q$
 
 Where:
-- $\( \mathbf{u} \)$: velocity field
-- $\( p \)$: pressure
-- $\( T \)$: temperature
-- $\( \mu(T) \)$: viscosity (constant)
-- $\( \kappa \)$: thermal diffusivity
-- $\( Q \)$: heat source
-- $\( \rho \)$: density (constante)
+- $\mathbf{u}$: velocity field
+- $p$: pressure
+- $T$: temperature
+- $\mu$: viscosity (constant)
+- $\kappa$: thermal diffusivity
+- $Q$: heat source
+- $\rho$: density (constante)
 
 ---
 
