@@ -1,0 +1,191 @@
+// Bibliotecas
+load "iovtk"
+
+// Malha
+border a1(t=0,1){x=t; y=0; label=2;}
+border a2(t=0,1){x=1; y=t; label=2;}
+border a3(t=0,1){x=1-t; y=1; label=1;}
+border a4(t=0,1){x=0; y=1-t; label=2;}
+int n = 80;
+mesh Th = buildmesh(a1(n)+a2(n)+a3(n)+a4(n));
+
+// Espaços funcionais
+fespace Vh(Th, P1);
+fespace Qh(Th, P1);
+fespace ThT(Th, P1);
+
+// Variáveis do fluido
+Vh u1, u2, u1old, u2old, v1, v2, ht;
+Qh p, q;
+Vh du1, du2;
+
+// Variáveis de temperatura
+ThT T, Told, w, dTn;
+
+// Parâmetros físicos e numéricos
+real Re = 100;
+real nu = 1.0 / Re;
+real dt = 0.1;
+int nmax = 50;
+int itmax = 20;
+real kappa = 0.01;
+
+// Macros
+macro umod() sqrt(u1old^2 + u2old^2) //
+ht = hTriangle;
+macro tau() (1.0e-4 / sqrt((2/dt)^2 + (2.0 * umod / ht)^2 + (4.0 * nu / (ht^2))^2)) //
+
+// Condições iniciais
+u1old = 0; u2old = 0;
+Told = 0;
+func fx = 0;
+func fy = 0;
+
+// Loop no tempo
+for (int n = 0; n < nmax; ++n) {
+    cout << "\n>>> Tempo t = " << n*dt << endl;
+
+    // --- Sistema de Stokes inicial para obter u_old ---
+    solve stokes([u1, u2, p], [v1, v2, q]) =
+        int2d(Th)(
+            nu * (dx(u1) * dx(v1) + dy(u1) * dy(v1) +
+                dx(u2) * dx(v2) + dy(u2) * dy(v2))
+            - p * q * 1e-6
+            - p * (dx(v1) + dy(v2)) - q * (dx(u1) + dy(u2))
+        )
+        - int1d(Th)(p / nu * v1)
+        + on(2, u1 = 0, u2 = 0)
+        + on(1, u1 = 1, u2 = 0);
+
+    // --- Inicialização ---
+    u1old = u1;
+    u2old = u2;
+
+    // Iterações de Picard
+    for (int it = 0; it < itmax; ++it) {
+        cout << "  Iteracao Picard = " << it << endl;
+
+        problem NSE([u1, u2, p], [v1, v2, q]) =
+            int2d(Th)(
+                (1.0/dt)*(u1 * v1 + u2 * v2)
+              + nu * (dx(u1)*dx(v1) + dy(u1)*dy(v1) + dx(u2)*dx(v2) + dy(u2)*dy(v2))
+              + u1old * dx(u1) * v1 + u2old * dy(u1) * v1
+              + u1old * dx(u2) * v2 + u2old * dy(u2) * v2
+              - p * q * 1e-6
+              - p * (dx(v1) + dy(v2))
+              - q * (dx(u1) + dy(u2))
+            )
+            - int2d(Th)(
+                (1.0/dt)*(u1old * v1 + u2old * v2)
+            )
+            - - int2d(Th)(fx*v1 + fy*v2)
+            // GLS: parte 1 (resíduo momentum)
+            + int2d(Th)(
+                tau * (
+                    ((u1)/dt) * u1old * dx(v1) +
+                    ((u2)/dt) * u2old * dy(v1) +
+                    ((u1)/dt) * u1old * dx(v2) +
+                    ((u2)/dt) * u2old * dy(v2)
+                )
+            )
+            - int2d(Th)(
+                tau * (
+                    (u1old/dt) * u1old * dx(v1) +
+                    (u2old/dt) * u2old * dy(v1) +
+                    (u1old/dt) * u1old * dx(v2) +
+                    (u2old/dt) * u2old * dy(v2)
+                )
+            )
+
+            + int2d(Th)(
+                tau * (
+                    u1old * dx(u1) * u1old * dx(v1) +
+                    u1old * dx(u1) * u2old * dy(v1) +
+                    u2old * dy(u1) * u1old * dx(v1) +
+                    u2old * dy(u1) * u2old * dy(v1) +
+                    u1old * dx(u2) * u1old * dx(v2) +
+                    u1old * dx(u2) * u2old * dy(v2) +
+                    u2old * dy(u2) * u1old * dx(v2) +
+                    u2old * dy(u2) * u2old * dy(v2)
+                )
+            )
+            + int2d(Th)(
+                tau * (
+                    dx(p) * (u1old * dx(v1) + u2old * dy(v1)) +
+                    dy(p) * (u1old * dx(v2) + u2old * dy(v2))
+                )
+            )
+            - int2d(Th)(
+                tau * nu * (
+                    (dxx(u1)+dyy(u1)) * (u1old * dx(v1) + u2old * dy(v1)) +
+                    (dxx(u2)+dyy(u2)) * (u1old * dx(v2) + u2old * dy(v2))
+                )
+            )
+            // GLS: parte 2 (continuidade)
+            + int2d(Th)(
+                tau * (
+                    dx(q)*(u1old*dx(u1) + u2old*dy(u1)) +
+                    dy(q)*(u1old*dx(u2) + u2old*dy(u2))
+                )
+            )
+            + int2d(Th)(tau * (dx(p)*dx(q) + dy(p)*dy(q)))
+            - int2d(Th)(
+                tau * nu * (
+                    dx(q)*(dxx(u1) + dyy(u1)) +
+                    dy(q)*(dxx(u2) + dyy(u2))
+                )
+            )
+            // GLS: parte 3 (testes nas eqs. de momentum)
+            - int2d(Th)(
+                tau * nu * (
+                    (dxx(v1)+dyy(v1))*(u1old*dx(u1) + u2old*dy(u1)) +
+                    (dxx(v2)+dyy(v2))*(u1old*dx(u2) + u2old*dy(u2))
+                )
+            )
+            - int2d(Th)(
+                tau * nu * (
+                    (dxx(v1)+dyy(v1)) * dx(p) +
+                    (dxx(v2)+dyy(v2)) * dy(p)
+                )
+            )
+            + int2d(Th)(
+                tau * nu^2 * (
+                    (dxx(v1)+dyy(v1))*(dxx(u1)+dyy(u1)) +
+                    (dxx(v2)+dyy(v2))*(dxx(u2)+dyy(u2))
+                )
+            )
+            // Condições de contorno
+            - int1d(Th, 2)(p / nu * v1)
+            + on(2, u1 = 0, u2 = 0)
+            + on(1, u1 = 1, u2 = 0);
+
+        NSE;
+    }
+
+    // Atualiza variáveis antigas
+    du1 = (u1 - u1old)/dt;
+    du2 = (u2 - u2old)/dt;
+    u1old = u1;
+    u2old = u2;
+
+    // Equação de temperatura (transiente)
+    dTn = (T - Told)/dt;
+
+    solve heat(T, w) =
+        int2d(Th)(
+            (T/dt) * w
+          + (u1 * dx(T) + u2 * dy(T)) * w
+          + kappa * (dx(T)*dx(w) + dy(T)*dy(w))
+        )
+        -int2d(Th)(
+            Told/dt * w
+        )
+        + on(1, T = 50)
+        + on(2, T = 0);
+
+    Told = T;
+
+    // Visualização e saída
+    plot([u1, u2], wait = 0, fill = true, value = true, cmm = "Velocity t=" + n*dt);
+    savevtk("D:/Documentos/Petrov-Galerkin Method/Data/results100_t="+n*dt+".vtu", Th, [u1, u2], p, T, dataname = "Velocity Pressure Temperature");
+}

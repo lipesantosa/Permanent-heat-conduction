@@ -1,0 +1,141 @@
+load "iovtk"
+
+real Re = 100;                 // Reynolds
+real rho = 1.0;
+real mu = 1.0/Re;
+real kappa = 0.01;              // Condutividade térmica
+real Cp = 1.0;
+real beta = 0.001;              // Coeficiente de expansão térmica
+real Q0 = 500;                // Fonte de calor nas regiões Source (label 3)
+//real Q1 = 150.0;
+
+
+// real mu = 8.9e-4;
+// real rho = 997;               // kg/m³             // kg/(m.s)
+// real Cp = 4182;               // J/(kg.K)
+// real kappa = 0.606;           // W/(m.K)
+
+int maxIter = 10;
+real tol = 1e-6;
+
+// Malha
+border a01(t=0,1){x=-2; y=1-t; label=1;} // In
+border a02(t=0,1){x=-2+2*t; y=0; label=2;}
+border a03(t=0,1){x=0; y=0-t; label=2;}
+border a04(t=0,1){x=0.5*t; y=-1; label=2;}
+border a05(t=0,1){x=0.5+2*t; y=-1; label=3;}  // Source
+border a06(t=0,1){x=2.5+2.5*t; y=-1; label=2;}
+border a07(t=0,1){x=5+2*t; y=-1; label=3;}    // Source
+border a08(t=0,1){x=7+0.5*t; y=-1; label=2;}
+border a09(t=0,1){x=7.5; y=-1+3*t; label=4;}  // Out
+border a10(t=0,1){x=7.5-2.5*t; y=2; label=2;}
+border a11(t=0,1){x=5-2*t; y=2; label=2;}     // Source
+border a12(t=0,1){x=3-3*t; y=2; label=2;}
+border a13(t=0,1){x=0; y=2-t; label=2;}
+border a14(t=0,1){x=-2*t; y=1; label=2;}
+
+int n = 20;
+mesh Th = buildmesh(a01(n)+a02(4*n)+a03(n)+a04(n)+a05(4*n)+a06(n)+a07(4*n)+a08(n)+a09(4*n)+a10(n)+a11(5*n)+a12(n)+a13(4*n)+a14(n));
+
+// Espaços
+fespace Vh(Th, P2);
+fespace Qh(Th, P1);
+fespace Thh(Th, P1);
+
+Vh u1, u2, v1, v2;
+Vh u1k, u2k;
+Qh p, q;
+Thh T, phi;
+Vh u1old = 0, u2old = 0;
+Thh Told = 300;
+
+real t = 0;
+real dt = 0.1;
+real tmax = 3.0;
+int id = 0;
+
+func uin =  (1 - sqr(y-0.5)); 
+func fx = 0;
+func fy = 0;
+
+ //Time loop
+for (t = 0; t <= tmax; t += dt) {
+    cout << "Time = " << t << endl;
+
+    int iter = 0;
+    real err = 1;
+    u1k = u1old;
+    u2k = u2old;
+    Told = Told; 
+
+    // Picard iterations
+    while ((err > tol) && (iter < maxIter)) {
+
+        // Navier-Stokes
+        problem NavierStokes([u1,u2,p], [v1,v2,q])
+          = int2d(Th)(
+              rho/dt*(u1*v1 + u2*v2)
+            + mu*(dx(u1)*dx(v1) + dy(u1)*dy(v1) + dx(u2)*dx(v2) + dy(u2)*dy(v2))
+            + rho*(u1k*dx(u1) + u2k*dy(u1))*v1
+            + rho* (u1k*dx(u2) + u2k*dy(u2))*v2
+            - p*(dx(v1) + dy(v2))
+            - q*(dx(u1) + dy(u2))
+          )
+          // - int2d(Th)(
+          //       rho/dt*(u1old*v1 + u2old*v2)
+          //     + rho*beta*(Told-300)*v2
+          //     )
+          - int2d(Th)(
+              rho/dt*(u1old*v1 + u2old*v2))
+          - int2d(Th)(fx*v1 + fy*v2)
+          + on(1, u1=uin, u2=0)
+          + on(2, 3, u1=0, u2=0);
+
+        NavierStokes;
+
+        // Convection-Diffusion
+        problem ConvecDiff(T, phi)
+          = int2d(Th)(
+             rho*Cp * (T/dt)*phi 
+            + kappa*(dx(T)*dx(phi) + dy(T)*dy(phi))
+            + rho*Cp *(u1*dx(T) + u2*dy(T)) * phi
+          )
+          - int2d(Th)(
+              rho*Cp * (Told/dt) * phi
+            - Q0*(region==1)*phi
+            //- Q1*(region==5)*phi
+          )
+          + on(2,3,4, T=0);
+
+        ConvecDiff;
+
+        // Error evaluation
+        err = sqrt(int2d(Th)((u1 - u1k)^2 + (u2 - u2k)^2));
+        cout << "Picard Iteration " << iter << ", err = " << err << endl;
+
+        u1k = u1;
+        u2k = u2;
+        iter++;
+
+        // Optional plot inside Picard
+        if (iter % 5 == 0) {
+            plot([u1, u2], wait=0, fill=true, value=true, nbiso=20, cmm="Velocity");
+        
+    }
+
+    // Update for next time step
+    u1old = u1;
+    u2old = u2;
+    Told = T;
+
+    // Plot after time step
+    //plot([u1, u2], wait=0, fill=true, value=true, nbiso=20, cmm="Velocity at t=" +t);
+    //plot(p, wait=0, fill=true, value=true, nbiso=20, cmm="Pressure at t=" +t);
+    plot(T, wait=0, fill=true, value=true, nbiso=20, cmm="Temperature at t=" +t);
+  }
+
+
+  savevtk("resultsQ100_t"+t+".vtu", Th, [u1, u2], p, T, dataname = "velocity pressure temperature");
+}
+  
+

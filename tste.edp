@@ -1,0 +1,152 @@
+// Carregando módulo para saída VTK
+load "iovtk"
+
+// Propriedades físicas da água a 25°C
+real rho = 997.0;            // kg/m³
+real mu = 8.9e-4;            // Pa.s
+real kappa = 0.606;          // W/m.K
+real Cp = 4182.0;            // J/kg.K
+real beta = 0.00021;         // 1/K
+//real g = 9.81;               // m/s²
+//real Tref = 25.0;            // Temperatura de referência para Boussinesq (°C)
+
+// Parâmetros numéricos
+real dt = 0.1;
+real tolNewton = 1e-6;
+int maxIterNewton = 20;
+real tmax = 5.0;
+
+// Malha: Exemplo simples (ajuste conforme quiser)
+border a01(t=0,1){x=-2; y=1-t; label=1;} // In
+border a02(t=0,1){x=-2+2*t; y=0; label=2;}
+border a03(t=0,1){x=0; y=0-t; label=2;}
+border a04(t=0,1){x=0.5*t; y=-1; label=2;}
+border a05(t=0,1){x=0.5+2*t; y=-1; label=3;}  // Source
+border a06(t=0,1){x=2.5+2.5*t; y=-1; label=2;}
+border a07(t=0,1){x=5+2*t; y=-1; label=5;}    // Source
+border a08(t=0,1){x=7+0.5*t; y=-1; label=2;}
+border a09(t=0,1){x=7.5; y=-1+3*t; label=4;}  // Out
+border a10(t=0,1){x=7.5-2.5*t; y=2; label=2;}
+border a11(t=0,1){x=5-2*t; y=2; label=3;}     // Source
+border a12(t=0,1){x=3-3*t; y=2; label=2;}
+border a13(t=0,1){x=0; y=2-t; label=2;}
+border a14(t=0,1){x=-2*t; y=1; label=2;}
+
+int n = 20;
+mesh Th = buildmesh(a01(n)+a02(4*n)+a03(n)+a04(n)+a05(4*n)+a06(n)+a07(4*n)+a08(n)+a09(4*n)+a10(n)+a11(5*n)+a12(n)+a13(4*n)+a14(n));
+
+// Espaços funcionais
+fespace Vh(Th, P2);   // Velocidade
+fespace Qh(Th, P1);   // Pressão
+fespace Thh(Th, P1);  // Temperatura
+
+// Variáveis
+Vh u1, u2, du1, du2, v1, v2;
+Qh p, dp, q;
+Thh T, dT, phi;
+
+Vh u1old = 0, u2old = 0;
+Thh Told = 300;
+
+// Fonte de calor interna (exemplo: região inteira)
+func Q = 1e5; // Exemplo: 100 kW/m³ (ajuste conforme necessário)
+
+// Tempo
+real t = 0;
+int id = 0;
+
+func uin =  (1 - sqr(y-0.5));
+
+// Loop no tempo
+for(t=0; t<=tmax; t+=dt){
+    cout << "Tempo = " << t << endl;
+
+    // Inicialização Newton
+    real errNewton = 1.0;
+    int iterNewton = 0;
+
+    while((errNewton > tolNewton) && (iterNewton < maxIterNewton)){
+
+        // Termos Boussinesq
+        func fx = 0;
+        func fy = 0;
+
+        // Sistema Linear Newton
+        varf NewtonSys([du1, du2, dp, dT], [v1, v2, q, phi])
+            = int2d(Th)(
+                // Linearização Navier-Stokes
+                rho/dt * (du1*v1 + du2*v2)
+              + mu*(dx(du1)*dx(v1) + dy(du1)*dy(v1) + dx(du2)*dx(v2) + dy(du2)*dy(v2))
+              + rho*(u1*dx(du1) + u2*dy(du1))*v1
+              + rho*(du1*dx(u1) + du2*dy(u1))*v1
+              + rho*(u1*dx(du2) + u2*dy(du2))*v2
+              + rho*(du1*dx(u2) + du2*dy(u2))*v2
+              - dp*(dx(v1) + dy(v2))
+              - q*(dx(du1) + dy(du2))
+
+                // Linearização Convecção-Difusão Temperatura
+              + rho*Cp/dt * dT*phi
+              + rho*Cp*(u1*dx(dT) + u2*dy(dT))*phi
+              + rho*Cp*(du1*dx(T) + du2*dy(T))*phi
+              + kappa*(dx(dT)*dx(phi) + dy(dT)*dy(phi))
+            );
+
+        // Vetor de resíduo
+        varf Residuo([du1, du2, dp, dT], [v1, v2, q, phi])
+            = int2d(Th)(
+                // Navier-Stokes Residual
+                rho/dt * ((u1-u1old)*v1 + (u2-u2old)*v2)
+              + mu*(dx(u1)*dx(v1) + dy(u1)*dy(v1) + dx(u2)*dx(v2) + dy(u2)*dy(v2))
+              + rho*(u1*dx(u1) + u2*dy(u1))*v1
+              + rho*(u1*dx(u2) + u2*dy(u2))*v2
+              - p*(dx(v1) + dy(v2))
+              - q*(dx(u1) + dy(u2))
+              - fx*v1 - fy*v2
+
+                // Convecção-Difusão Residual
+              + rho*Cp/dt * (T - Told)*phi
+              + rho*Cp*(u1*dx(T) + u2*dy(T))*phi
+              + kappa*(dx(T)*dx(phi) + dy(T)*dy(phi))
+              - Q*phi
+            )
+  
+
+        // Montagem
+        matrix A = NewtonSys(Vh, Vh, Qh, Thh);
+        real[int] b = Residuo(0, Vh, Vh, Qh, Thh);
+
+        // Condições de contorno: Exemplo com velocidade de entrada na esquerda
+        set(A, solver=UMFPACK);
+
+        // Aplicar Dirichlet para velocidade e temperatura
+        du1[2,3] = 0;
+        du2[] = 0;
+        dp[] = 0;
+        dT[] = 300;
+
+        A.solve(b, [du1[], du2[], dp[], dT[]]);
+
+        // Atualizar solução
+        u1[] -= du1[];
+        u2[] -= du2[];
+        p[]  -= dp[];
+        T[]  -= dT[];
+
+      cout << "Iteração Newton = " << iterNewton << endl;
+
+        // Erro Newton
+        errNewton = sqrt(du1[].linfty^2 + du2[].linfty^2 + dT[].linfty^2);
+        cout << "Erro Newton = " << errNewton << endl;
+
+        iterNewton++;
+    }
+
+    // Atualizar variáveis do próximo tempo
+    u1old = u1;
+    u2old = u2;
+    Told = T;
+
+    // Exportar resultados
+    savevtk("newtonCoupled_t"+t+".vtu", Th, [u1,u2], p, T, dataname="velocity pressure temperature");
+}
+

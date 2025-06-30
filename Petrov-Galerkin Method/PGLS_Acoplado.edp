@@ -1,0 +1,97 @@
+// Bibliotecas
+load "iovtk"
+
+// Malha
+border a1(t=0,1){x=t; y=0; label=3;}
+border a2(t=0,1){x=1; y=t; label=4;}
+border a3(t=0,1){x=1-t; y=1; label=1;}
+border a4(t=0,1){x=0; y=1-t; label=5;}
+int n = 80;
+mesh Th = buildmesh(a1(n)+a2(n)+a3(n)+a4(n));
+
+// Parâmetros físicos
+real Re = 100;
+real nu = 1.0 / Re;
+real kappa = 0.01;
+real Cstab = 1.0;
+
+// Espaços
+fespace Vh(Th, P1);
+fespace Xh(Th, [P1, P1, P1, P1]); // u1, u2, p, T
+fespace Wh(Th, P0); // h e tau por elemento
+
+Xh [u1, u2, p, T], [v1, v2, q, vT];
+Vh ht = hTriangle;
+Wh tau;
+
+// Inicialização do campo de velocidade
+[u1, u2, p, T] = [0, 0, 0, 0];
+
+// Loop de Newton ou Picard (simplificado como 1 iteração aqui)
+for (int it = 0; it < 30; it++) {
+    // Atualização de tau (usando campo anterior)
+    for (int i = 0; i < Th.nt; i++) {
+        real hK = Th[i].measure^0.5;
+        real ux = u1[][i], uy = u2[][i];
+        real umag2 = ux^2 + uy^2;
+        tau[][i] = 1.0 / sqrt((2.0 * sqrt(umag2) / hK)^2 + (4.0 * nu / (hK^2))^2 + (4.0 * kappa / (hK^2))^2);
+    }
+
+    // Sistema acoplado Navier-Stokes + Temperatura
+    problem navierStokesTemp([u1, u2, p, T], [v1, v2, q, vT]) =
+        int2d(Th)(
+            // Navier-Stokes clássico
+            nu * (dx(u1)*dx(v1) + dy(u1)*dy(v1) + dx(u2)*dx(v2) + dy(u2)*dy(v2))
+          + u1*dx(u1)*v1 + u2*dy(u1)*v1
+          + u1*dx(u2)*v2 + u2*dy(u2)*v2
+          - p*(dx(v1) + dy(v2)) - q*(dx(u1) + dy(u2))
+
+            // Temperatura clássica
+          + (u1*dx(T) + u2*dy(T)) * vT
+          + kappa * (dx(T)*dx(vT) + dy(T)*dy(vT))
+        )
+        // GLS para Navier-Stokes (resíduo do momentum)
+        + int2d(Th)(
+            tau * (
+                (u1*dx(u1) + u2*dy(u1) + dx(p) - nu*(dxx(u1)+dyy(u1))) * (u1*dx(v1) + u2*dy(v1))
+              + (u1*dx(u2) + u2*dy(u2) + dy(p) - nu*(dxx(u2)+dyy(u2))) * (u1*dx(v2) + u2*dy(v2))
+            )
+        )
+        // GLS para continuidade
+        + int2d(Th)(
+            tau * (
+                dx(q)*(u1*dx(u1) + u2*dy(u1)) + dy(q)*(u1*dx(u2) + u2*dy(u2))
+              + dx(p)*dx(q) + dy(p)*dy(q)
+            )
+        )
+        - int2d(Th)(
+            tau * nu * (
+                dx(q)*(dxx(u1) + dyy(u1)) + dy(q)*(dxx(u2) + dyy(u2))
+              + (dxx(v1)+dyy(v1)) * (u1*dx(u1) + u2*dy(u1) + dx(p))
+              + (dxx(v2)+dyy(v2)) * (u1*dx(u2) + u2*dy(u2) + dy(p))
+            )
+        )
+        + int2d(Th)(
+            tau * nu^2 * (
+                (dxx(v1)+dyy(v1))*(dxx(u1)+dyy(u1)) +
+                (dxx(v2)+dyy(v2))*(dxx(u2)+dyy(u2))
+            )
+        )
+        // Contornos
+        + on(1, u1=1, u2=0)
+        + on(3, u1=0, u2=0)
+        + on(4, u1=0, u2=0)
+        + on(5, u1=0, u2=0)
+        + on(5, T=1)
+        + on(4, T=0);
+
+    navierStokesTemp;
+}
+
+// Plot
+plot([u1, u2], wait=1, fill=1, cmm="Velocidade");
+plot(p, wait=1, fill=1, cmm="Pressão");
+plot(T, wait=1, fill=1, cmm="Temperatura");
+
+// Exportar
+savevtk("acoplado.vtu", Th, [u1, u2], p, T, dataname="u p T");

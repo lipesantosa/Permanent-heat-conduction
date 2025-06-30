@@ -1,0 +1,179 @@
+load "iovtk"
+
+// --- Parâmetros físicos e numéricos ---
+real Re = 100;
+real nu = 1.0 / Re;
+real tol = 1e-10;
+int imax = 100;
+real kappa = 1; // Difusividade térmica
+
+// --- Malha: Cavidade quadrada ---
+border a1(t=0,1){x=t; y=0; label=3;}
+border a2(t=0,1){x=1; y=t; label=4;}
+border a3(t=0,1){x=1-t; y=1; label=1;}
+border a4(t=0,1){x=0; y=1-t; label=2;}
+int n = 80;
+mesh Th = buildmesh(a1(n)+a2(n)+a3(n)+a4(n));
+
+// --- Espaços de função ---
+fespace Vh(Th, P1);          // Velocidade escalar
+fespace Ph(Th, P1);          // Pressão
+fespace Xh(Th, [P1, P1, P1]); // [u1, u2, p]
+fespace ThT(Th, P1);         // Temperatura
+
+Xh [wx, wy, wp];
+Vh u1n=0, u2n=0, du1=0, du2=0, v1, v2;
+Ph pn=0, dp=0, q;
+ThT Tn=0, dT=0, vT;
+
+func f1 = 0;
+func f2 = 0;
+func QT = 0; // Fonte térmica
+
+real hmin = Th.hmin;
+real deltaGLS = hmin^2 / (4.0 * nu);
+
+int iter = 0;
+bool convergiu = false;
+
+// --- Loop de Newton para Navier-Stokes ---
+while (iter < imax && !convergiu) {
+
+    // --- Resíduo Convencional ---
+    varf Res([du1, du2, dp], [v1, v2, q], optimize=0) =
+        int2d(Th)(
+            - nu*(dx(u1n)*dx(v1) + dy(u1n)*dy(v1) + dx(u2n)*dx(v2) + dy(u2n)*dy(v2))
+            + (u1n*dx(u1n) + u2n*dy(u1n)) * v1
+            + (u1n*dx(u2n) + u2n*dy(u2n)) * v2
+            - pn*(dx(v1) + dy(v2))
+            - q*(dx(u1n) + dy(u2n))
+            - f1*v1 - f2*v2
+        )
+        + on(1, du1=1, du2=0)
+        + on(2,3,4, du1=0, du2=0)
+        + on(1, dp=0);
+
+    // --- Resíduo GLS ---
+    varf ResGLS([du1, du2, dp], [v1, v2, q]) =
+        int2d(Th)(
+            deltaGLS * (
+                (u1n*dx(u1n) + u2n*dy(u1n) + dx(pn)) * (u1n*dx(v1) + u2n*dy(v1) + dx(q))
+              + (u1n*dx(u2n) + u2n*dy(u2n) + dy(pn)) * (u1n*dx(v2) + u2n*dy(v2) + dy(q))
+              + (dx(u1n)+dy(u2n)) * (dx(v1)+dy(v2))
+            )
+        );
+
+    // --- Jacobiano Convencional ---
+    varf Jac([du1, du2, dp], [v1, v2, q], optimize=0) =
+        int2d(Th)(
+            - nu*(dx(du1)*dx(v1) + dy(du1)*dy(v1) + dx(du2)*dx(v2) + dy(du2)*dy(v2))
+            + (du1*dx(u1n) + du2*dy(u1n)) * v1
+            + (u1n*dx(du1) + u2n*dy(du1)) * v1
+            + (du1*dx(u2n) + du2*dy(u2n)) * v2
+            + (u1n*dx(du2) + u2n*dy(du2)) * v2
+            - dp*(dx(v1) + dy(v2))
+            - q*(dx(du1) + dy(du2))
+        )
+        + on(1, du1=0, du2=0)
+        + on(2,3,4, du1=0, du2=0)
+        + on(1, dp=0);
+
+    // --- Jacobiano GLS ---
+    varf GLS([du1, du2, dp], [v1, v2, q], optimize=0) =
+        int2d(Th)(
+            deltaGLS * (
+                (u1n*dx(du1) + u2n*dy(du1) + dx(dp)) * (u1n*dx(v1) + u2n*dy(v1) + dx(q))
+              + (u1n*dx(du2) + u2n*dy(du2) + dy(dp)) * (u1n*dx(v2) + u2n*dy(v2) + dy(q))
+              + (dx(du1)+dy(du2)) * (dx(v1)+dy(v2))
+            )
+        );
+
+    // --- Montagem ---
+    matrix J = Jac(Xh, Xh);
+    matrix JGLS = GLS(Xh, Xh);
+    J += JGLS;
+
+    real[int] R = Res(0, Xh);
+    real[int] RGLS = ResGLS(0, Xh);
+    real[int] F = R + RGLS;
+    real[int] minusF = -1 * F;
+
+    set(J, solver=UMFPACK);
+    wx[] = J^-1 * minusF;
+
+    // --- Atualização Newton ---
+    u1n = -wx;
+    u2n = -wy;
+    pn  = -wp;
+    u1n[] += du1[];
+    u2n[] += du2[];
+    pn[]  += dp[];
+
+    real normDelta = sqrt(du1[].l2^2 + du2[].l2^2 + dp[].l2^2);
+    cout << "Iteracao Newton: " << iter << ", ||Delta|| = " << normDelta << endl;
+
+        
+    // --- Resolvendo Temperatura (após o NS convergir) ---
+
+    // Tau adaptativo para a temperatura
+    real tauKT = hmin^2 / (4.0 * nu);
+
+    // --- Resíduo Temperatura ---
+    varf ResT(dT, vT) =
+        int2d(Th)(
+            kappa * (dx(Tn)*dx(vT) + dy(Tn)*dy(vT))
+            + (u1n * dx(Tn) + u2n * dy(Tn)) * vT
+            - QT * vT
+        );
+
+    varf ResGLST(dT, vT) =
+        int2d(Th)(
+            tauKT * (
+                (u1n * dx(Tn) + u2n * dy(Tn) - kappa * ((dx(Tn)) + (dy(Tn)))) *
+                (u1n * dx(vT) + u2n * dy(vT) - kappa * ((dx(vT)) + (dy(vT))))
+            )
+        );
+
+    // --- Jacobiano Temperatura ---
+    varf JacT(dT, vT) =
+        int2d(Th)(
+            kappa * (dx(dT)*dx(vT) + dy(dT)*dy(vT))
+            + (u1n * dx(dT) + u2n * dy(dT)) * vT
+        );
+
+    varf JacGLST(dT, vT) =
+        int2d(Th)(
+            tauKT * (
+                (u1n * dx(dT) + u2n * dy(dT) - kappa * ((dx(dT)) + (dy(dT)))) *
+                (u1n * dx(vT) + u2n * dy(vT) - kappa * ((dx(vT)) + (dy(vT))))
+            )
+        );
+
+    // --- Montagem Temperatura ---
+    matrix JT = JacT(ThT, ThT);
+    matrix JTGLST = JacGLST(ThT, ThT);
+    JT += JTGLST;
+
+    real[int] RT = ResT(0, ThT);
+    real[int] RTGLST = ResGLST(0, ThT);
+    real[int] FT = RT + RTGLST;
+    real[int] minusRT = -1 * FT;
+
+    set(JT, solver=UMFPACK);
+    dT[] = JT^-1 * minusRT;
+
+    Tn[] += dT[];
+
+
+    if (normDelta < tol) convergiu = true;
+
+    iter++;
+
+        // --- Pós-processamento ---
+    real diverror = sqrt(int2d(Th)((dx(u1n) + dy(u2n))^2));
+    cout << "Norma L2 da divergencia final: " << diverror << endl;
+
+    plot([u1n, u2n], cmm="Velocidade", wait=1, value=true, fill=true);
+    plot(pn, cmm="Pressao", wait=1, value=true, fill=true);
+    plot(Tn, cmm="Temperatura", wait=1, value=true, fill=true);
+}

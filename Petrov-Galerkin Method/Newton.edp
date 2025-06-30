@@ -1,0 +1,79 @@
+// - Parâmetros físicos e numéricos —
+real Re = 100;
+real nu = 1./Re; // Viscosidade cinemática
+real dt = 0.01; // Passo de tempo
+int nmax = 50; // Máx passos de tempo
+int imax = 20; // Máx iterações Newton por passo
+real tol = 1e-6; // Tolerância de Newton
+real tau = 1e-4; // Parâmetro de estabilização GLS (τ)
+real err = 0;
+
+// - Malha: Cavidade quadrada —
+border a1(t=0,1){x=t; y=0; label=3;}   
+border a2(t=0,1){x=1; y=t; label=4;}   
+border a3(t=0,1){x=1-t; y=1; label=1;} 
+border a4(t=0,1){x=0; y=1-t; label=2;} 
+int n = 16;
+mesh Th = buildmesh(a1(n)+a2(n)+a3(n)+a4(n));
+
+// Fespace
+fespace Xh(Th, P1);
+Xh u1, u2;
+Xh v1,v2;
+Xh du1,du2;
+Xh u1p,u2p;
+
+fespace Mh(Th,P1);
+Mh p;
+Mh q;
+Mh dp;
+Mh pp;
+
+// Macro
+macro Grad(u1,u2) [dx(u1), dy(u1), dx(u2),dy(u2)] //
+macro UgradV(u1,u2,v1,v2) [[u1,u2]'*[dx(v1),dy(v1)],
+                        [u1,u2]'*[dx(v2),dy(v2)]] //
+macro div(u1,u2) (dx(u1) + dy(u2)) //
+
+// Initialization
+u1 = 0;
+u2 = 0;
+
+func fx = 0;
+func fy = 0;
+
+// Newton loop
+    for (n = 0; n < 15; n++){
+        // Newton
+        solve NavierStokes ([du1, du2, dp], [v1, v2, q])
+            = int2d(Th)(
+                   nu * (Grad(du1,du2)' * Grad(v1,v2))
+                + UgradV(du1,du2, u1, u2)' * [v1,v2]
+                + UgradV( u1, u2,du1,du2)' * [v1,v2]
+                - div(du1,du2) * q
+                - div(v1,v2) * dp
+                - 1e-8*dp*q //stabilization term
+            )
+            - int2d(Th) (
+                   nu * (Grad(u1,u2)' * Grad(v1,v2))
+                + UgradV(u1,u2, u1, u2)' * [v1,v2]
+                - div(u1,u2) * q
+                - div(v1,v2) * p
+                - (fx*v1 + fy*v2)
+            )
+            + on(1, du1=-1, du2=0) + on(2,3,4, du1=0, du2=0)
+            ;
+
+        u1[] -= du1[];
+        u2[] -= du2[];
+        p[] -= dp[];
+
+        real Lu1=u1[].linfty, Lu2=u2[].linfty, Lp=p[].linfty;
+        err = du1[].linfty/Lu1 + du2[].linfty/Lu2 + dp[].linfty/Lp;
+
+        cout << n << " err = " << err << " " << tol << " rey = " << 1./nu << endl;
+        if(err < tol) break; //converge
+        if( n>3 && err > 10.) break; //blowup
+
+        plot([u1,u2], wait=0, fill=true, value=true, cmm="Velocidade");
+    }
