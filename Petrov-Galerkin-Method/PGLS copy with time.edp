@@ -1,0 +1,222 @@
+// Libraries
+load "iovtk"
+
+// Malha
+border a1(t=0,1){x=t; y=0; label=2;}
+border a2(t=0,1){x=1; y=t; label=2;}
+border a3(t=0,1){x=1-t; y=1; label=1;}
+border a4(t=0,1){x=0; y=1-t; label=2;}
+int n = 129;
+mesh Th = buildmesh(a1(n)+a2(n)+a3(n)+a4(n));
+
+// Despaces
+fespace Vh(Th, P1);
+fespace Qh(Th, P1);
+fespace ThT(Th, P1);
+
+Vh u1, u2, u1old, u2old, v1, v2, ht;
+Qh p, q;
+Vh du1, du2;
+ThT T, Told, theta, dTn, Pe;
+
+// Parameters
+real Re = 1000;          // Reynolds Number
+real nu = 1.0 / Re;     // Viscosity
+real dt = 0.1;          // Time step
+int nmax = 50;          // Time its
+int itmax = 20;         // Picard its
+real kappa = 0.01;      // Thermic conduction  
+
+// Macros
+macro umod() sqrt(u1old^2 + u2old^2) //
+ht = hTriangle;
+macro tau() (1.0e-4 / sqrt((2/dt)^2 + (2.0 * umod / ht)^2 + (4.0 * nu / (ht^2))^2)) //
+
+macro Peclet() max(1e-8, 1/3 * umod * ht / (2*kappa)) //
+macro tauT() ht^2/(2*Peclet*kappa) * sqrt(Peclet^2/(36 + Peclet^2))  //
+
+
+// Inicialization
+u1old = 0; u2old = 0;
+Told = 0;
+func fx = 0;
+func fy = 0;
+
+//  Stokes for u initial
+solve stokes([u1, u2, p], [v1, v2, q]) =
+    int2d(Th)(
+        nu * (dx(u1) * dx(v1) + dy(u1) * dy(v1) +
+            dx(u2) * dx(v2) + dy(u2) * dy(v2))
+        - p * q * 1e-6
+        - p * (dx(v1) + dy(v2)) - q * (dx(u1) + dy(u2))
+    )
+    - int1d(Th)(p / nu * v1)
+    + on(2, u1 = 0, u2 = 0)
+    + on(1, u1 = 1, u2 = 0);
+
+u1old = u1;
+u2old = u2;
+
+// Time loop
+for (int n = 0; n < nmax; ++n) {
+    cout << "\n>>> Tempo t = " << n*dt << endl;
+
+    // Picard Iterations
+    for (int it = 0; it < itmax; ++it) {
+        cout << "  Iteracao Picard = " << it << endl;
+
+        problem NSE([u1, u2, p], [v1, v2, q]) =
+            int2d(Th)(
+                (1.0/dt)*(u1 * v1 + u2 * v2)
+              + nu * (dx(u1)*dx(v1) + dy(u1)*dy(v1) + dx(u2)*dx(v2) + dy(u2)*dy(v2))
+              + u1old * dx(u1) * v1 + u2old * dy(u1) * v1
+              + u1old * dx(u2) * v2 + u2old * dy(u2) * v2
+              - p * q * 1e-6
+              - p * (dx(v1) + dy(v2))
+              - q * (dx(u1) + dy(u2))
+            )
+            - int2d(Th)(
+                (1.0/dt)*(u1old * v1 + u2old * v2)
+            )
+            - - int2d(Th)(fx*v1 + fy*v2)
+            // GLS: part 1 
+            + int2d(Th)(
+                tau * (
+                    ((u1)/dt) * u1old * dx(v1) +
+                    ((u2)/dt) * u2old * dy(v1) +
+                    ((u1)/dt) * u1old * dx(v2) +
+                    ((u2)/dt) * u2old * dy(v2)
+                )
+            )
+            - int2d(Th)(
+                tau * (
+                    (u1old/dt) * u1old * dx(v1) +
+                    (u2old/dt) * u2old * dy(v1) +
+                    (u1old/dt) * u1old * dx(v2) +
+                    (u2old/dt) * u2old * dy(v2)
+                )
+            )
+
+            + int2d(Th)(
+                tau * (
+                    u1old * dx(u1) * u1old * dx(v1) +
+                    u1old * dx(u1) * u2old * dy(v1) +
+                    u2old * dy(u1) * u1old * dx(v1) +
+                    u2old * dy(u1) * u2old * dy(v1) +
+                    u1old * dx(u2) * u1old * dx(v2) +
+                    u1old * dx(u2) * u2old * dy(v2) +
+                    u2old * dy(u2) * u1old * dx(v2) +
+                    u2old * dy(u2) * u2old * dy(v2)
+                )
+            )
+            + int2d(Th)(
+                tau * (
+                    dx(p) * (u1old * dx(v1) + u2old * dy(v1)) +
+                    dy(p) * (u1old * dx(v2) + u2old * dy(v2))
+                )
+            )
+            - int2d(Th)(
+                tau * nu * (
+                    (dxx(u1)+dyy(u1)) * (u1old * dx(v1) + u2old * dy(v1)) +
+                    (dxx(u2)+dyy(u2)) * (u1old * dx(v2) + u2old * dy(v2))
+                )
+            )
+            // GLS: part 2 
+            + int2d(Th)(
+                tau * (
+                    dx(q)*(u1old*dx(u1) + u2old*dy(u1)) +
+                    dy(q)*(u1old*dx(u2) + u2old*dy(u2))
+                )
+            )
+            + int2d(Th)(tau * (dx(p)*dx(q) + dy(p)*dy(q)))
+            - int2d(Th)(
+                tau * nu * (
+                    dx(q)*(dxx(u1) + dyy(u1)) +
+                    dy(q)*(dxx(u2) + dyy(u2))
+                )
+            )
+            // GLS: part 3 
+            - int2d(Th)(
+                tau * nu * (
+                    (dxx(v1)+dyy(v1))*(u1old*dx(u1) + u2old*dy(u1)) +
+                    (dxx(v2)+dyy(v2))*(u1old*dx(u2) + u2old*dy(u2))
+                )
+            )
+            - int2d(Th)(
+                tau * nu * (
+                    (dxx(v1)+dyy(v1)) * dx(p) +
+                    (dxx(v2)+dyy(v2)) * dy(p)
+                )
+            )
+            + int2d(Th)(
+                tau * nu^2 * (
+                    (dxx(v1)+dyy(v1))*(dxx(u1)+dyy(u1)) +
+                    (dxx(v2)+dyy(v2))*(dxx(u2)+dyy(u2))
+                )
+            )
+            - int1d(Th, 2)(p / nu * v1)
+            + on(2, u1 = 0, u2 = 0)
+            + on(1, u1 = 1, u2 = 0);
+
+        NSE;
+    }
+
+    // Atualizaztion
+    du1 = (u1 - u1old)/dt;
+    du2 = (u2 - u2old)/dt;
+    u1old = u1;
+    u2old = u2;
+
+    // Convection-Diffusion Equation
+    dTn = (T - Told)/dt;
+
+    solve heat(T, theta) =
+        int2d(Th)(
+            (T/dt)*theta
+        + (u1*dx(T) + u2*dy(T))*theta
+        + kappa*(dx(T)*dx(theta) + dy(T)*dy(theta))
+        )
+        + int2d(Th)(tauT * (T/dt + u1*dx(T) + u2*dy(T) - kappa*(dxx(T) + dyy(T))) 
+            * (u1*dx(theta) + u2*dy(theta) - kappa*(dxx(theta) + dyy(theta)))
+        )
+    - int2d(Th)(Told/dt * theta)
+    + on(1, T = 50)
+    + on(2, T = 0);
+
+    Told = T;
+
+
+    // Visualization and .vtk save
+    //plot(T, wait = 0, fill = true, value = true, cmm = "Temperature at t=" + n*dt);
+    //plot([u1, u2], wait = 0, fill = true, value = true, cmm = "Velocity at t=" + n*dt);
+    
+    //savevtk("D:/Documentos/Permanent-heat-conduction/Petrov-Galerkin-Method/Data/results100_t="+n*dt+".vtu", Th, [u1, u2], p, T, dataname = "Velocity Pressure Temperature");
+}
+
+// Comparation to Ghia: u1 along vertical through Geometric Center of Cavity 
+int npts = 100;
+real[int] uy(npts), y(npts);
+
+for (int i = 0; i < npts; i++) {
+    y[i] = i*1.0/(npts - 1);     
+    uy[i] = u1(0.5, y[i]);       
+}
+
+// Save data to cpmparation
+ofstream fout("perfil_u1_x05_Re1000.txt");
+for (int i = 0; i < npts; i++) {
+    fout << y[i] << " " << uy[i] << endl;
+}
+
+// // Comparation to Ghia: u2 along horizontal through Geometric Center of Cavity 
+real[int] vx(npts), x(npts);
+
+for (int i = 0; i < npts; i++) {
+    x[i] = i*1.0/(npts - 1);     
+    vx[i] = u2(x[i], 0.5);      
+}
+
+ofstream fout2("perfil_u2_y05_Re1000.txt");
+for (int i = 0; i < npts; i++) {
+    fout2 << x[i] << " " << vx[i] << endl;
+}
