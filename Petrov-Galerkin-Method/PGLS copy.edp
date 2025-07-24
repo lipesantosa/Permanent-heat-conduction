@@ -1,191 +1,342 @@
-// Bibliotecas
+// Libraries
 load "iovtk"
 
-// Malha
-border a1(t=0,1){x=t; y=0; label=2;}
-border a2(t=0,1){x=1; y=t; label=2;}
-border a3(t=0,1){x=1-t; y=1; label=1;}
-border a4(t=0,1){x=0; y=1-t; label=2;}
-int n = 80;
-mesh Th = buildmesh(a1(n)+a2(n)+a3(n)+a4(n));
+func real[int] runSimulation(int n) {
+    // Malha
+    border a1(t=0,1){x=t; y=0; label=2;}
+    border a2(t=0,1){x=1; y=t; label=2;}
+    border a3(t=0,1){x=1-t; y=1; label=1;}
+    border a4(t=0,1){x=0; y=1-t; label=2;}
+    mesh Th = buildmesh(a1(n)+a2(n)+a3(n)+a4(n));
 
-// Espaços funcionais
-fespace Vh(Th, P1);
-fespace Qh(Th, P1);
-fespace ThT(Th, P1);
+    // Despaces
+    fespace Vh(Th, P1);
+    fespace Qh(Th, P1);
+    fespace ThT(Th, P1);
 
-// Variáveis do fluido
-Vh u1, u2, u1old, u2old, v1, v2, ht;
-Qh p, q;
-Vh du1, du2;
+    Vh u1, u2, u1old, u2old, v1, v2, ht;
+    Qh p, q;
+    Vh du1, du2;
+    ThT T, Told, theta, dTn, Pe;
 
-// Variáveis de temperatura
-ThT T, Told, w, dTn;
+    // Variáveis para a solução exata e termos fonte (declaradas uma vez)
+    Vh u1exactTime, u2exactTime, fx, fy;
+    Qh pexactTime;
 
-// Parâmetros físicos e numéricos
-real Re = 100;
-real nu = 1.0 / Re;
-real dt = 0.1;
-int nmax = 50;
-int itmax = 20;
-real kappa = 0.01;
 
-// Macros
-macro umod() sqrt(u1old^2 + u2old^2) //
-ht = hTriangle;
-macro tau() (1.0e-4 / sqrt((2/dt)^2 + (2.0 * umod / ht)^2 + (4.0 * nu / (ht^2))^2)) //
+    // Parameters
+    real Re = 100;           // Número de Reynolds
+    real nu = 1.0 / Re;      // Viscosidade
+    real dt = 0.1;           // Passo de tempo
+    int nmax = 50;           // Número máximo de iterações no tempo
+    int itmax = 20;          // Número máximo de iterações de Picard
+    real kappa = 0.01;       // Condutividade térmica
+    real pi = acos(-1);
+    // Tempo
+    real t = 0; // Variável de tempo global
 
-// Condições iniciais
-u1old = 0; u2old = 0;
-Told = 0;
-func fx = 0;
-func fy = 0;
+    // Solução exata fabricada (funções de tempo)
+    func u1exactFunc = sin(pi*x)*cos(pi*y)*sin(t);
+    func u2exactFunc = -cos(pi*x)*sin(pi*y)*sin(t);
+    func pexactFunc  = cos(pi*x)*cos(pi*y)*sin(t);
 
-// Loop no tempo
-for (int n = 0; n < nmax; ++n) {
-    cout << "\n>>> Tempo t = " << n*dt << endl;
+    // Derivadas no tempo (implícito) - Não são usadas diretamente na formulação implícita atual,
+    // mas são mantidas para referência caso um termo de derivada explícita seja adicionado.
+    func du1dtFunc = sin(pi*x)*cos(pi*y)*cos(t);
+    func du2dtFunc = -cos(pi*x)*sin(pi*y)*cos(t);
 
-    // --- Sistema de Stokes inicial para obter u_old ---
-    solve stokes([u1, u2, p], [v1, v2, q]) =
-        int2d(Th)(
-            nu * (dx(u1) * dx(v1) + dy(u1) * dy(v1) +
-                dx(u2) * dx(v2) + dy(u2) * dy(v2))
-            - p * q * 1e-6
-            - p * (dx(v1) + dy(v2)) - q * (dx(u1) + dy(u2))
-        )
-        - int1d(Th)(p / nu * v1)
-        + on(2, u1 = 0, u2 = 0)
-        + on(1, u1 = 1, u2 = 0);
+    // Macros para parâmetros de estabilização
+    macro umod() sqrt(u1old^2 + u2old^2) // Magnitude da velocidade
+    ht = hTriangle; // Tamanho do elemento da malha
+    // Parâmetro de estabilização para Navier-Stokes (método GLS)
+    macro tau() (1.0e-4 / sqrt((2/dt)^2 + (2.0 * umod / ht)^2 + (4.0 * nu / (ht^2))^2)) //
 
-    // --- Inicialização ---
-    u1old = u1;
-    u2old = u2;
+    // Número de Peclet e parâmetro de estabilização para a equação do calor (método SUPG)
+    macro Peclet() max(1e-8, 1/3 * umod * ht / (2*kappa)) // Garante que Peclet não seja zero
+    macro tauT() ht^2/(2*Peclet*kappa) * sqrt(Peclet^2/(36 + Peclet^2))  //
 
-    // Iterações de Picard
-    for (int it = 0; it < itmax; ++it) {
-        cout << "  Iteracao Picard = " << it << endl;
 
-        problem NSE([u1, u2, p], [v1, v2, q]) =
+    // Inicialização
+    // Condições iniciais para velocidade e temperatura
+    // Atribui valores em t=0
+    t = 0;
+    u1old = u1exactFunc;
+    u2old = u2exactFunc;
+    Told = 0; // Temperatura inicial
+
+    // Funções do lado direito para as equações de Navier-Stokes (derivadas da solução exata)
+    // Serão atualizadas dentro do loop de tempo
+    func fxFunc = sin(pi*x)*cos(pi*y)*cos(t) // du1/dt
+             + sin(pi*x)*cos(pi*y)*sin(t) * pi*cos(pi*x)*cos(pi*y)*sin(t) // u1*du1/dx
+             - cos(pi*x)*sin(pi*y)*sin(t) * (-pi*sin(pi*x)*sin(pi*y)*sin(t)) // u2*du1/dy
+             - nu * (-pi^2*sin(pi*x)*cos(pi*y)*sin(t) - pi^2*sin(pi*x)*cos(pi*y)*sin(t)) // -nu*Laplacian(u1)
+             + pi*sin(pi*x)*cos(pi*y)*sin(t); // dp/dx
+
+    func fyFunc = -cos(pi*x)*sin(pi*y)*cos(t) // du2/dt
+             + sin(pi*x)*cos(pi*y)*sin(t) * (pi*sin(pi*x)*sin(pi*y)*sin(t)) // u1*du2/dx
+             - cos(pi*x)*sin(pi*y)*sin(t) * (-pi*cos(pi*x)*cos(pi*y)*sin(t)) // u2*du2/dy
+             - nu * (-pi^2*(-cos(pi*x)*sin(pi*y)*sin(t)) - pi^2*(-cos(pi*x)*sin(pi*y)*sin(t))) // -nu*Laplacian(u2)
+             + pi*cos(pi*x)*sin(pi*y)*sin(t); // dp/dy
+
+
+    // Loop de tempo para simulação transiente
+    for (int nTimeStep = 0; nTimeStep < nmax; ++nTimeStep) {
+        t = nTimeStep * dt; // Atualiza o tempo atual
+        cout << "\n>>> Tempo t = " << t << endl;
+
+        // Atualiza as funções da solução exata com o tempo atual 't'
+        // Atribuição direta da func para a variável Vh/Qh
+        u1exactTime = u1exactFunc;
+        u2exactTime = u2exactFunc;
+        pexactTime  = pexactFunc;
+
+        // Atualiza os termos fonte com o tempo atual 't'
+        // Atribuição direta da func para a variável Vh
+        fx = fxFunc;
+        fy = fyFunc;
+
+        // Copia a solução do passo de tempo anterior para o ponto de partida da iteração atual
+        u1[] = u1old[];
+        u2[] = u2old[];
+
+        // Define variáveis intermediárias para termos (u/dt) para ajudar o parser
+        Vh u1DivDt = u1 / dt;
+        Vh u2DivDt = u2 / dt;
+        Vh u1oldDivDt = u1old / dt;
+        Vh u2oldDivDt = u2old / dt;
+
+        // Iterações de Picard para Navier-Stokes
+        for (int it = 0; it < itmax; ++it) {
+            cout << "   Iteracao Picard = " << it << endl;
+
+            problem NSE([u1, u2, p], [v1, v2, q]) =
+                int2d(Th)(
+                    // Termo de derivada no tempo (Euler implícito)
+                    (1.0/dt)*(u1 * v1 + u2 * v2)
+                    // Termos viscosos
+                    + nu * (dx(u1)*dx(v1) + dy(u1)*dy(v1) + dx(u2)*dx(v2) + dy(u2)*dy(v2))
+                    // Termos convectivos (linearizados usando u1old, u2old da iteração de Picard anterior)
+                    + u1old * dx(u1) * v1 + u2old * dy(u1) * v1
+                    + u1old * dx(u2) * v2 + u2old * dy(u2) * v2
+                    // Termo de estabilização de pressão (para elementos P1-P1)
+                    - p * q * 1e-6 // Pequeno termo de penalidade para pressão
+                    // Termos de acoplamento pressão-velocidade
+                    - p * (dx(v1) + dy(v2)) // (p, div(v))
+                    - q * (dx(u1) + dy(u2)) // (q, div(u))
+                )
+                // Lado direito do passo de tempo anterior
+                - int2d(Th)(
+                    (1.0/dt)*(u1old * v1 + u2old * v2)
+                )
+                // Termos fonte
+                - int2d(Th)(fx*v1 + fy*v2)
+                // GLS Stabilization terms (Generalized Least Squares)
+                // Esses termos adicionam estabilidade para fluxos dominados por convecção e oscilações de pressão
+                // Parte 1: relacionada à derivada no tempo e convecção
+                + int2d(Th)(
+                    (tau) * ( // Parênteses explícitos em torno da chamada da macro tau
+                        u1DivDt * u1old * dx(v1) + // Usando variável intermediária
+                        u2DivDt * u2old * dy(v1) + // Usando variável intermediária
+                        u1DivDt * u1old * dx(v2) + // Usando variável intermediária
+                        u2DivDt * u2old * dy(v2)   // Usando variável intermediária
+                    )
+                )
+                - int2d(Th)(
+                    (tau) * ( // Parênteses explícitos em torno da chamada da macro tau
+                        u1oldDivDt * u1old * dx(v1) + // Usando variável intermediária
+                        u2oldDivDt * u2old * dy(v1) + // Usando variável intermediária
+                        u1oldDivDt * u1old * dx(v2) + // Usando variável intermediária
+                        u2oldDivDt * u2old * dy(v2)
+                    )
+                )
+
+                // Parte 2: relacionada à convecção
+                + int2d(Th)(
+                    (tau) * ( // Parênteses explícitos em torno da chamada da macro tau
+                        (u1old * dx(u1) + u2old * dy(u1)) * (u1old * dx(v1) + u2old * dy(v1)) // (u . grad(u1), u . grad(v1))
+                    + (u1old * dx(u2) + u2old * dy(u2)) * (u1old * dx(v2) + u2old * dy(v2)) // (u . grad(u2), u . grad(v2))
+                    )
+                )
+                // Parte 3: relacionada ao gradiente de pressão
+                + int2d(Th)(
+                    (tau) * ( // Parênteses explícitos em torno da chamada da macro tau
+                        dx(p) * (u1old * dx(v1) + u2old * dy(v1)) + // (grad(p)_x, u . grad(v1))
+                        dy(p) * (u1old * dx(v2) + u2old * dy(v2))   // (grad(p)_y, u . grad(v2))
+                    )
+                )
+                // Parte 4: relacionada aos termos viscosos
+                - int2d(Th)(
+                    (tau) * nu * ( // Parênteses explícitos em torno da chamada da macro tau
+                        (dxx(u1)+dyy(u1)) * (u1old * dx(v1) + u2old * dy(v1)) + // (Laplacian(u1), u . grad(v1))
+                        (dxx(u2)+dyy(u2)) * (u1old * dx(v2) + u2old * dy(v2))   // (Laplacian(u2), u . grad(v2))
+                    )
+                )
+                // Parte 5: estabilização da equação de continuidade
+                + int2d(Th)(
+                    (tau) * ( // Parênteses explícitos em torno da chamada da macro tau
+                        dx(q)*(u1old*dx(u1) + u2old*dy(u1)) + // (div(q), u . grad(u))
+                        dy(q)*(u1old*dx(u2) + u2old*dy(u2))
+                    )
+                )
+                + int2d(Th)((tau) * (dx(p)*dx(q) + dy(p)*dy(q))) // (grad(p), grad(q))
+                - int2d(Th)(
+                    (tau) * nu * ( // Parênteses explícitos em torno da chamada da macro tau
+                        dx(q)*(dxx(u1) + dyy(u1)) + // (div(q), Laplacian(u))
+                        dy(q)*(dxx(u2) + dyy(u2))
+                    )
+                )
+                // Parte 6: mais termos relacionados à viscosidade
+                - int2d(Th)(
+                    (tau) * nu * ( // Parênteses explícitos em torno da chamada da macro tau
+                        (dxx(v1)+dyy(v1))*(u1old*dx(u1) + u2old*dy(u1)) +
+                        (dxx(v2)+dyy(v2))*(u1old*dx(u2) + u2old*dy(u2))
+                    )
+                )
+                - int2d(Th)(
+                    (tau) * nu * ( // Parênteses explícitos em torno da chamada da macro tau
+                        (dxx(v1)+dyy(v1)) * dx(p) +
+                        (dxx(v2)+dyy(v2)) * dy(p)
+                    )
+                )
+                + int2d(Th)(
+                    (tau) * nu^2 * ( // Parênteses explícitos em torno da chamada da macro tau
+                        (dxx(v1)+dyy(v1))*(dxx(u1)+dyy(u1)) +
+                        (dxx(v2)+dyy(v2))*(dxx(u2)+dyy(u2))
+                    )
+                )
+                // Condições de contorno
+                - int1d(Th, 2)(p / nu * v1) // Condição de contorno natural para pressão (se aplicável)
+                + on(2, u1 = 0, u2 = 0) // Dirichlet BC on boundary 2 (bottom, right, left)
+                + on(1, u1 = 1, u2 = 0); // Dirichlet BC on boundary 1 (top)
+
+            NSE; // Resolve o problema de Navier-Stokes
+        }
+
+        // Atualiza a velocidade antiga para o próximo passo de tempo
+        du1 = (u1 - u1old)/dt; // Calcula a derivada no tempo de u1
+        du2 = (u2 - u2old)/dt; // Calcula a derivada no tempo de u2
+        u1old = u1; // Armazena o u1 atual como antigo para o próximo passo de tempo
+        u2old = u2; // Armazena o u2 atual como antigo para o próximo passo de tempo
+
+
+        // Equação de Convecção-Difusão para a Temperatura
+        dTn = (T - Told)/dt; // Derivada no tempo da temperatura
+
+        solve heat(T, theta) =
             int2d(Th)(
-                (1.0/dt)*(u1 * v1 + u2 * v2)
-              + nu * (dx(u1)*dx(v1) + dy(u1)*dy(v1) + dx(u2)*dx(v2) + dy(u2)*dy(v2))
-              + u1old * dx(u1) * v1 + u2old * dy(u1) * v1
-              + u1old * dx(u2) * v2 + u2old * dy(u2) * v2
-              - p * q * 1e-6
-              - p * (dx(v1) + dy(v2))
-              - q * (dx(u1) + dy(u2))
+                (T/dt)*theta // Termo de derivada no tempo
+            + (u1*dx(T) + u2*dy(T))*theta // Termo de convecção
+            + kappa*(dx(T)*dx(theta) + dy(T)*dy(theta)) // Termo de difusão
             )
-            - int2d(Th)(
-                (1.0/dt)*(u1old * v1 + u2old * v2)
+            // Estabilização SUPG para a Equação do Calor
+            + int2d(Th)((tauT) * (T/dt + u1*dx(T) + u2*dy(T) - kappa*(dxx(T) + dyy(T)))
+                * (u1*dx(theta) + u2*dy(theta) - kappa*(dxx(theta) + dyy(theta)))
             )
-            - - int2d(Th)(fx*v1 + fy*v2)
-            // GLS: parte 1 (resíduo momentum)
-            + int2d(Th)(
-                tau * (
-                    ((u1)/dt) * u1old * dx(v1) +
-                    ((u2)/dt) * u2old * dy(v1) +
-                    ((u1)/dt) * u1old * dx(v2) +
-                    ((u2)/dt) * u2old * dy(v2)
-                )
-            )
-            - int2d(Th)(
-                tau * (
-                    (u1old/dt) * u1old * dx(v1) +
-                    (u2old/dt) * u2old * dy(v1) +
-                    (u1old/dt) * u1old * dx(v2) +
-                    (u2old/dt) * u2old * dy(v2)
-                )
-            )
+        - int2d(Th)(Told/dt * theta) // Lado direito do passo de tempo anterior
+        + on(1, T = 50) // Condição de contorno de Dirichlet na fronteira 1 (superior)
+        + on(2, T = 0); // Condição de contorno de Dirichlet na fronteira 2 (inferior, direita, esquerda)
 
-            + int2d(Th)(
-                tau * (
-                    u1old * dx(u1) * u1old * dx(v1) +
-                    u1old * dx(u1) * u2old * dy(v1) +
-                    u2old * dy(u1) * u1old * dx(v1) +
-                    u2old * dy(u1) * u2old * dy(v1) +
-                    u1old * dx(u2) * u1old * dx(v2) +
-                    u1old * dx(u2) * u2old * dy(v2) +
-                    u2old * dy(u2) * u1old * dx(v2) +
-                    u2old * dy(u2) * u2old * dy(v2)
-                )
-            )
-            + int2d(Th)(
-                tau * (
-                    dx(p) * (u1old * dx(v1) + u2old * dy(v1)) +
-                    dy(p) * (u1old * dx(v2) + u2old * dy(v2))
-                )
-            )
-            - int2d(Th)(
-                tau * nu * (
-                    (dxx(u1)+dyy(u1)) * (u1old * dx(v1) + u2old * dy(v1)) +
-                    (dxx(u2)+dyy(u2)) * (u1old * dx(v2) + u2old * dy(v2))
-                )
-            )
-            // GLS: parte 2 (continuidade)
-            + int2d(Th)(
-                tau * (
-                    dx(q)*(u1old*dx(u1) + u2old*dy(u1)) +
-                    dy(q)*(u1old*dx(u2) + u2old*dy(u2))
-                )
-            )
-            + int2d(Th)(tau * (dx(p)*dx(q) + dy(p)*dy(q)))
-            - int2d(Th)(
-                tau * nu * (
-                    dx(q)*(dxx(u1) + dyy(u1)) +
-                    dy(q)*(dxx(u2) + dyy(u2))
-                )
-            )
-            // GLS: parte 3 (testes nas eqs. de momentum)
-            - int2d(Th)(
-                tau * nu * (
-                    (dxx(v1)+dyy(v1))*(u1old*dx(u1) + u2old*dy(u1)) +
-                    (dxx(v2)+dyy(v2))*(u1old*dx(u2) + u2old*dy(u2))
-                )
-            )
-            - int2d(Th)(
-                tau * nu * (
-                    (dxx(v1)+dyy(v1)) * dx(p) +
-                    (dxx(v2)+dyy(v2)) * dy(p)
-                )
-            )
-            + int2d(Th)(
-                tau * nu^2 * (
-                    (dxx(v1)+dyy(v1))*(dxx(u1)+dyy(u1)) +
-                    (dxx(v2)+dyy(v2))*(dxx(u2)+dyy(u2))
-                )
-            )
-            // Condições de contorno
-            - int1d(Th, 2)(p / nu * v1)
-            + on(2, u1 = 0, u2 = 0)
-            + on(1, u1 = 1, u2 = 0);
+        Told = T; // Atualiza a temperatura antiga para o próximo passo de tempo
 
-        NSE;
+
+        // Visualização e salvamento .vtk (comentado por padrão)
+        //plot(T, wait = 0, fill = true, value = true, cmm = "Temperatura em t=" + nTimeStep*dt);
+        //plot([u1, u2], wait = 0, fill = true, value = true, cmm = "Velocidade em t=" + nTimeStep*dt);
+
+        //savevtk("D:/Documentos/Permanent-heat-conduction/Petrov-Galerkin-Method/Data/results100_t="+nTimeStep*dt+".vtu", Th, [u1, u2], p, T, dataname = "Velocity Pressure Temperature");
     }
 
-    // Atualiza variáveis antigas
-    du1 = (u1 - u1old)/dt;
-    du2 = (u2 - u2old)/dt;
-    u1old = u1;
-    u2old = u2;
+    // Cálculo dos erros finais (normas L2 e H1)
+    // Erro para o componente de velocidade u1 (norma L2)
+    real L2u1 = sqrt(int2d(Th)((u1 - u1exactTime)^2)); // Usa a variável Vh atualizada
+    // Erro para o componente de velocidade u2 (norma L2)
+    real L2u2 = sqrt(int2d(Th)((u2 - u2exactTime)^2)); // Usa a variável Vh atualizada
+    // Erro para a pressão (norma L2)
+    real L2p  = sqrt(int2d(Th)((p - pexactTime)^2)); // Usa a variável Qh atualizada
 
-    // Equação de temperatura (transiente)
-    dTn = (T - Told)/dt;
+    // Erro L2 combinado para a velocidade
+    real L2u = sqrt(L2u1^2 + L2u2^2);
 
-    solve heat(T, w) =
-        int2d(Th)(
-            (T/dt) * w
-          + (u1 * dx(T) + u2 * dy(T)) * w
-          + kappa * (dx(T)*dx(w) + dy(T)*dy(w))
-        )
-        -int2d(Th)(
-            Told/dt * w
-        )
-        + on(1, T = 50)
-        + on(2, T = 0);
+    cout << "L2u = " << L2u << endl;
+    cout << "L2p = " << L2p << endl;
 
-    Told = T;
+    // Campos de erro para cálculo da norma H1
+    Vh eu1 = u1 - u1exactTime; // Usa a variável Vh atualizada
+    Vh eu2 = u2 - u2exactTime; // Usa a variável Vh atualizada
+    Vh ep = p - pexactTime; // Usa a variável Qh atualizada
 
-    // Visualização e saída
-    plot([u1, u2], wait = 0, fill = true, value = true, cmm = "Velocity t=" + n*dt);
-    savevtk("D:/Documentos/Petrov-Galerkin Method/Data/results100_t="+n*dt+".vtu", Th, [u1, u2], p, T, dataname = "Velocity Pressure Temperature");
+    // Semi-norma H1 ao quadrado para u1
+    real H1u1SemiSq = int2d(Th)(dx(eu1)^2 + dy(eu1)^2);
+    // Semi-norma H1 ao quadrado para u2
+    real H1u2SemiSq = int2d(Th)(dx(eu2)^2 + dy(eu2)^2);
+    // Semi-norma H1 ao quadrado para pressão
+    real H1pSemiSq = int2d(Th)(dx(ep)^2 + dy(ep)^2);
+
+    // Norma H1 ao quadrado (parte L2 + parte da semi-norma) para u1
+    real H1u1Sq = int2d(Th)(eu1^2) + H1u1SemiSq;
+    // Norma H1 ao quadrado (parte L2 + parte da semi-norma) para u2
+    real H1u2Sq = int2d(Th)(eu2^2) + H1u2SemiSq;
+    // Norma H1 ao quadrado (parte L2 + parte da semi-norma) para pressão
+    real H1pSq = int2d(Th)(ep^2) + H1pSemiSq;
+
+    // Norma H1 combinada para a velocidade
+    real H1uTotal = sqrt(H1u1Sq + H1u2Sq);
+    // Norma H1 para a pressão
+    real H1pNorm = sqrt(H1pSq); // Correção: tira a raiz quadrada para a norma H1 real
+
+    // Array de retorno contendo todas as normas de erro calculadas
+    real[int] erros(4); // Array para armazenar [L2u, H1uTotal, L2p, H1pNorm]
+    erros[0] = L2u;
+    erros[1] = H1uTotal;
+    erros[2] = L2p;
+    erros[3] = H1pNorm;
+
+    return erros;
+}
+
+// Tamanhos da malha para o estudo de convergência
+int[int] Ns = [16, 32, 64];
+// Arrays para armazenar os resultados para cada tamanho de malha
+real[int] hs(Ns.n); // Tamanho da malha h
+real[int] L2u(Ns.n), H1u(Ns.n); // Erros L2 e H1 para a velocidade
+real[int] L2p(Ns.n), H1p(Ns.n); // Erros L2 e H1 para a pressão
+real[int] ordemL2u(Ns.n), ordemH1u(Ns.n); // Ordem de convergência para L2 e H1 da velocidade
+real[int] ordemL2p(Ns.n), ordemH1p(Ns.n); // Ordem de convergência para L2 e H1 da pressão
+
+// Loop principal para o estudo de convergência
+for (int i = 0; i < Ns.n; i++) {
+    int n = Ns[i];
+    real h = 1.0 / n;
+    hs[i] = h;
+
+    // Executa a simulação e obtém as normas de erro
+    real[int] erros = runSimulation(n);
+    L2u[i] = erros[0];
+    H1u[i] = erros[1]; // Atribui a norma H1 da velocidade
+    L2p[i] = erros[2];
+    H1p[i] = erros[3]; // Atribui a norma H1 da pressão
+
+    // Calcula a ordem de convergência
+    if (i == 0) {
+        ordemL2u[i] = 0; // Não há dados anteriores para o primeiro ponto
+        ordemH1u[i] = 0;
+        ordemL2p[i] = 0;
+        ordemH1p[i] = 0;
+    } else {
+        ordemL2u[i] = log(L2u[i-1]/L2u[i]) / log(hs[i-1]/hs[i]);
+        ordemH1u[i] = log(H1u[i-1]/H1u[i]) / log(hs[i-1]/hs[i]);
+        ordemL2p[i] = log(L2p[i-1]/L2p[i]) / log(hs[i-1]/hs[i]);
+        ordemH1p[i] = log(H1p[i-1]/H1p[i]) / log(hs[i-1]/hs[i]);
+    }
+}
+
+// Exporta os resultados para um arquivo CSV
+ofstream fout("tabela_erros.csv");
+fout << "h,L2u,Ordem_L2u,H1u,Ordem_H1u,L2p,Ordem_L2p,H1p,Ordem_H1p" << endl; // Cabeçalho atualizado
+for (int i = 0; i < Ns.n; i++) {
+    fout << hs[i] << ","
+         << L2u[i] << "," << (i == 0 ? "NaN" : ordemL2u[i]) << ","
+         << H1u[i] << "," << (i == 0 ? "NaN" : ordemH1u[i]) << ","
+         << L2p[i] << "," << (i == 0 ? "NaN" : ordemL2p[i]) << ","
+         << H1p[i] << "," << (i == 0 ? "NaN" : ordemH1p[i]) << endl;
 }

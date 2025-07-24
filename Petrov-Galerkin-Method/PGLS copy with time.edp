@@ -20,7 +20,7 @@ Vh du1, du2;
 ThT T, Told, theta, dTn, Pe;
 
 // Parameters
-real Re = 1000;          // Reynolds Number
+real Re = 100;          // Reynolds Number
 real nu = 1.0 / Re;     // Viscosity
 real dt = 0.1;          // Time step
 int nmax = 50;          // Time its
@@ -78,7 +78,7 @@ for (int n = 0; n < nmax; ++n) {
             - int2d(Th)(
                 (1.0/dt)*(u1old * v1 + u2old * v2)
             )
-            - - int2d(Th)(fx*v1 + fy*v2)
+            - int2d(Th)(fx*v1 + fy*v2)
             // GLS: part 1 
             + int2d(Th)(
                 tau * (
@@ -99,16 +99,11 @@ for (int n = 0; n < nmax; ++n) {
 
             + int2d(Th)(
                 tau * (
-                    u1old * dx(u1) * u1old * dx(v1) +
-                    u1old * dx(u1) * u2old * dy(v1) +
-                    u2old * dy(u1) * u1old * dx(v1) +
-                    u2old * dy(u1) * u2old * dy(v1) +
-                    u1old * dx(u2) * u1old * dx(v2) +
-                    u1old * dx(u2) * u2old * dy(v2) +
-                    u2old * dy(u2) * u1old * dx(v2) +
-                    u2old * dy(u2) * u2old * dy(v2)
+                    (u1old * dx(u1) + u2old * dy(u1)) * (u1old * dx(v1) + u2old * dy(v1))
+                + (u1old * dx(u2) + u2old * dy(u2)) * (u1old * dx(v2) + u2old * dy(v2))
                 )
             )
+
             + int2d(Th)(
                 tau * (
                     dx(p) * (u1old * dx(v1) + u2old * dy(v1)) +
@@ -203,7 +198,7 @@ for (int i = 0; i < npts; i++) {
 }
 
 // Save data to cpmparation
-ofstream fout("perfil_u1_x05_Re1000.txt");
+ofstream fout("perfil_u1_x05_Re100.txt");
 for (int i = 0; i < npts; i++) {
     fout << y[i] << " " << uy[i] << endl;
 }
@@ -216,7 +211,7 @@ for (int i = 0; i < npts; i++) {
     vx[i] = u2(x[i], 0.5);      
 }
 
-ofstream fout2("perfil_u2_y05_Re1000.txt");
+ofstream fout2("perfil_u2_y05_Re100.txt");
 for (int i = 0; i < npts; i++) {
     fout2 << x[i] << " " << vx[i] << endl;
 }
