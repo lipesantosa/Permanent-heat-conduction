@@ -22,12 +22,14 @@ func real[int] runSimulation(int n) {
     // Variáveis para a solução exata e termos fonte (declaradas uma vez)
     Vh u1exactTime, u2exactTime, fx, fy;
     Qh pexactTime;
+    Vh TexactTime; // Variável para a solução exata da temperatura
+    Vh fT;          // Variável para o termo fonte da temperatura
 
 
     // Parameters
     real Re = 100;           // Número de Reynolds
     real nu = 1.0 / Re;      // Viscosidade
-    real dt = 0.1;           // Passo de tempo
+    real dt = 0.001;           // Passo de tempo
     int nmax = 50;           // Número máximo de iterações no tempo
     int itmax = 20;          // Número máximo de iterações de Picard
     real kappa = 0.01;       // Condutividade térmica
@@ -39,11 +41,18 @@ func real[int] runSimulation(int n) {
     func u1exactFunc = sin(pi*x)*cos(pi*y)*sin(t);
     func u2exactFunc = -cos(pi*x)*sin(pi*y)*sin(t);
     func pexactFunc  = cos(pi*x)*cos(pi*y)*sin(t);
+    func TexactFunc = sin(pi*x)*sin(pi*y)*sin(t);
 
-    // Derivadas no tempo (implícito) - Não são usadas diretamente na formulação implícita atual,
-    // mas são mantidas para referência caso um termo de derivada explícita seja adicionado.
+
     func du1dtFunc = sin(pi*x)*cos(pi*y)*cos(t);
     func du2dtFunc = -cos(pi*x)*sin(pi*y)*cos(t);
+
+    // Termo fonte para a equação do calor (derivado da TexactFunc)
+    func fTFunc = sin(pi*x)*sin(pi*y)*cos(t) // d(Texact)/dt
+             + u1exactFunc * pi*cos(pi*x)*sin(pi*y)*sin(t) // u1 * d(Texact)/dx
+             + u2exactFunc * pi*sin(pi*x)*cos(pi*y)*sin(t) // u2 * d(Texact)/dy
+             - kappa * (-2*pi^2*sin(pi*x)*sin(pi*y)*sin(t)); // -kappa * Laplacian(Texact)
+
 
     // Macros para parâmetros de estabilização
     macro umod() sqrt(u1old^2 + u2old^2) // Magnitude da velocidade
@@ -57,15 +66,12 @@ func real[int] runSimulation(int n) {
 
 
     // Inicialização
-    // Condições iniciais para velocidade e temperatura
-    // Atribui valores em t=0
     t = 0;
     u1old = u1exactFunc;
     u2old = u2exactFunc;
-    Told = 0; // Temperatura inicial
+    Told = TexactFunc; 
 
     // Funções do lado direito para as equações de Navier-Stokes (derivadas da solução exata)
-    // Serão atualizadas dentro do loop de tempo
     func fxFunc = sin(pi*x)*cos(pi*y)*cos(t) // du1/dt
              + sin(pi*x)*cos(pi*y)*sin(t) * pi*cos(pi*x)*cos(pi*y)*sin(t) // u1*du1/dx
              - cos(pi*x)*sin(pi*y)*sin(t) * (-pi*sin(pi*x)*sin(pi*y)*sin(t)) // u2*du1/dy
@@ -78,17 +84,17 @@ func real[int] runSimulation(int n) {
              - nu * (-pi^2*(-cos(pi*x)*sin(pi*y)*sin(t)) - pi^2*(-cos(pi*x)*sin(pi*y)*sin(t))) // -nu*Laplacian(u2)
              + pi*cos(pi*x)*sin(pi*y)*sin(t); // dp/dy
 
-
     // Loop de tempo para simulação transiente
     for (int nTimeStep = 0; nTimeStep < nmax; ++nTimeStep) {
         t = nTimeStep * dt; // Atualiza o tempo atual
         cout << "\n>>> Tempo t = " << t << endl;
 
         // Atualiza as funções da solução exata com o tempo atual 't'
-        // Atribuição direta da func para a variável Vh/Qh
         u1exactTime = u1exactFunc;
         u2exactTime = u2exactFunc;
         pexactTime  = pexactFunc;
+        TexactTime = TexactFunc; // Atualiza a solução exata da temperatura
+        fT = fTFunc; // Atualiza o termo fonte da temperatura
 
         // Atualiza os termos fonte com o tempo atual 't'
         // Atribuição direta da func para a variável Vh
@@ -118,8 +124,7 @@ func real[int] runSimulation(int n) {
                     // Termos convectivos (linearizados usando u1old, u2old da iteração de Picard anterior)
                     + u1old * dx(u1) * v1 + u2old * dy(u1) * v1
                     + u1old * dx(u2) * v2 + u2old * dy(u2) * v2
-                    // Termo de estabilização de pressão (para elementos P1-P1)
-                    - p * q * 1e-6 // Pequeno termo de penalidade para pressão
+                    - p * q * 1e-6 
                     // Termos de acoplamento pressão-velocidade
                     - p * (dx(v1) + dy(v2)) // (p, div(v))
                     - q * (dx(u1) + dy(u2)) // (q, div(u))
@@ -135,17 +140,17 @@ func real[int] runSimulation(int n) {
                 // Parte 1: relacionada à derivada no tempo e convecção
                 + int2d(Th)(
                     (tau) * ( // Parênteses explícitos em torno da chamada da macro tau
-                        u1DivDt * u1old * dx(v1) + // Usando variável intermediária
-                        u2DivDt * u2old * dy(v1) + // Usando variável intermediária
-                        u1DivDt * u1old * dx(v2) + // Usando variável intermediária
-                        u2DivDt * u2old * dy(v2)   // Usando variável intermediária
+                        u1DivDt * u1old * dx(v1) + 
+                        u2DivDt * u2old * dy(v1) + 
+                        u1DivDt * u1old * dx(v2) + 
+                        u2DivDt * u2old * dy(v2)   
                     )
                 )
                 - int2d(Th)(
                     (tau) * ( // Parênteses explícitos em torno da chamada da macro tau
-                        u1oldDivDt * u1old * dx(v1) + // Usando variável intermediária
-                        u2oldDivDt * u2old * dy(v1) + // Usando variável intermediária
-                        u1oldDivDt * u1old * dx(v2) + // Usando variável intermediária
+                        u1oldDivDt * u1old * dx(v1) + 
+                        u2oldDivDt * u2old * dy(v1) + 
+                        u1oldDivDt * u1old * dx(v2) + 
                         u2oldDivDt * u2old * dy(v2)
                     )
                 )
@@ -232,76 +237,83 @@ func real[int] runSimulation(int n) {
             + int2d(Th)((tauT) * (T/dt + u1*dx(T) + u2*dy(T) - kappa*(dxx(T) + dyy(T)))
                 * (u1*dx(theta) + u2*dy(theta) - kappa*(dxx(theta) + dyy(theta)))
             )
-        - int2d(Th)(Told/dt * theta) // Lado direito do passo de tempo anterior
-        + on(1, T = 50) // Condição de contorno de Dirichlet na fronteira 1 (superior)
-        + on(2, T = 0); // Condição de contorno de Dirichlet na fronteira 2 (inferior, direita, esquerda)
+        - int2d(Th)(Told/dt * theta - fT * theta) // Lado direito do passo de tempo anterior + termo fonte
+        + on(1, T = TexactTime) // Condição de contorno de Dirichlet na fronteira 1 (baseada na solução exata)
+        + on(2, T = TexactTime); // Condição de contorno de Dirichlet na fronteira 2 (baseada na solução exata)
 
         Told = T; // Atualiza a temperatura antiga para o próximo passo de tempo
 
 
-        // Visualização e salvamento .vtk (comentado por padrão)
-        //plot(T, wait = 0, fill = true, value = true, cmm = "Temperatura em t=" + nTimeStep*dt);
-        //plot([u1, u2], wait = 0, fill = true, value = true, cmm = "Velocidade em t=" + nTimeStep*dt);
-
-        //savevtk("D:/Documentos/Permanent-heat-conduction/Petrov-Galerkin-Method/Data/results100_t="+nTimeStep*dt+".vtu", Th, [u1, u2], p, T, dataname = "Velocity Pressure Temperature");
+        // Visualização e salvamento .vtk
+        //savevtk("D:/Documentos/Permanent-heat-conduction/Petrov-Galerkin-Method/DataPGLS/results_t="+nTimeStep+".vtu", Th, [u1, u2], p, T, dataname = "Velocity Pressure Temperature");
+        
+        // Para plotar na janela do FreeFem++ (opcional)
+        // plot(T, wait = 0, fill = true, value = true, cmm = "Temperatura em t=" + nTimeStep*dt);
+        // plot([u1, u2], wait = 0, fill = true, value = true, cmm = "Velocidade em t=" + nTimeStep*dt);
     }
 
     // Cálculo dos erros finais (normas L2 e H1)
-    // Erro para o componente de velocidade u1 (norma L2)
+
     real L2u1 = sqrt(int2d(Th)((u1 - u1exactTime)^2)); // Usa a variável Vh atualizada
-    // Erro para o componente de velocidade u2 (norma L2)
     real L2u2 = sqrt(int2d(Th)((u2 - u2exactTime)^2)); // Usa a variável Vh atualizada
-    // Erro para a pressão (norma L2)
     real L2p  = sqrt(int2d(Th)((p - pexactTime)^2)); // Usa a variável Qh atualizada
+    real L2T  = sqrt(int2d(Th)((T - TexactTime)^2)); // Erro L2 para a temperatura
+
 
     // Erro L2 combinado para a velocidade
     real L2u = sqrt(L2u1^2 + L2u2^2);
 
     cout << "L2u = " << L2u << endl;
     cout << "L2p = " << L2p << endl;
+    cout << "L2T = " << L2T << endl; // Novo: Imprime L2 da temperatura
 
     // Campos de erro para cálculo da norma H1
     Vh eu1 = u1 - u1exactTime; // Usa a variável Vh atualizada
     Vh eu2 = u2 - u2exactTime; // Usa a variável Vh atualizada
     Vh ep = p - pexactTime; // Usa a variável Qh atualizada
+    Vh eT = T - TexactTime; // Campo de erro para a temperatura
 
-    // Semi-norma H1 ao quadrado para u1
     real H1u1SemiSq = int2d(Th)(dx(eu1)^2 + dy(eu1)^2);
-    // Semi-norma H1 ao quadrado para u2
     real H1u2SemiSq = int2d(Th)(dx(eu2)^2 + dy(eu2)^2);
-    // Semi-norma H1 ao quadrado para pressão
     real H1pSemiSq = int2d(Th)(dx(ep)^2 + dy(ep)^2);
+    real H1TSemiSq = int2d(Th)(dx(eT)^2 + dy(eT)^2); 
 
-    // Norma H1 ao quadrado (parte L2 + parte da semi-norma) para u1
     real H1u1Sq = int2d(Th)(eu1^2) + H1u1SemiSq;
-    // Norma H1 ao quadrado (parte L2 + parte da semi-norma) para u2
     real H1u2Sq = int2d(Th)(eu2^2) + H1u2SemiSq;
-    // Norma H1 ao quadrado (parte L2 + parte da semi-norma) para pressão
     real H1pSq = int2d(Th)(ep^2) + H1pSemiSq;
+    real H1TSq = int2d(Th)(eT^2) + H1TSemiSq; 
+
 
     // Norma H1 combinada para a velocidade
     real H1uTotal = sqrt(H1u1Sq + H1u2Sq);
     // Norma H1 para a pressão
-    real H1pNorm = sqrt(H1pSq); // Correção: tira a raiz quadrada para a norma H1 real
+    real H1pNorm = sqrt(H1pSq); 
+    // Norma H1 para a temperatura
+    real H1TNorm = sqrt(H1TSq); 
 
     // Array de retorno contendo todas as normas de erro calculadas
-    real[int] erros(4); // Array para armazenar [L2u, H1uTotal, L2p, H1pNorm]
+    real[int] erros(6); // Aumenta o tamanho do array para 6: [L2u, H1uTotal, L2p, H1pNorm, L2T, H1TNorm]
     erros[0] = L2u;
     erros[1] = H1uTotal;
     erros[2] = L2p;
     erros[3] = H1pNorm;
+    erros[4] = L2T;     
+    erros[5] = H1TNorm; 
 
     return erros;
 }
 
 // Tamanhos da malha para o estudo de convergência
-int[int] Ns = [16, 32, 64];
+int[int] Ns = [8, 16, 32, 128]; 
 // Arrays para armazenar os resultados para cada tamanho de malha
 real[int] hs(Ns.n); // Tamanho da malha h
-real[int] L2u(Ns.n), H1u(Ns.n); // Erros L2 e H1 para a velocidade
-real[int] L2p(Ns.n), H1p(Ns.n); // Erros L2 e H1 para a pressão
-real[int] ordemL2u(Ns.n), ordemH1u(Ns.n); // Ordem de convergência para L2 e H1 da velocidade
-real[int] ordemL2p(Ns.n), ordemH1p(Ns.n); // Ordem de convergência para L2 e H1 da pressão
+real[int] L2u(Ns.n), H1u(Ns.n); 
+real[int] L2p(Ns.n), H1p(Ns.n); 
+real[int] L2T(Ns.n), H1T(Ns.n); 
+
+real[int] ordemL2u(Ns.n), ordemH1u(Ns.n); 
+real[int] ordemL2p(Ns.n), ordemH1p(Ns.n);
+real[int] ordemL2T(Ns.n), ordemH1T(Ns.n); 
 
 // Loop principal para o estudo de convergência
 for (int i = 0; i < Ns.n; i++) {
@@ -312,9 +324,11 @@ for (int i = 0; i < Ns.n; i++) {
     // Executa a simulação e obtém as normas de erro
     real[int] erros = runSimulation(n);
     L2u[i] = erros[0];
-    H1u[i] = erros[1]; // Atribui a norma H1 da velocidade
+    H1u[i] = erros[1]; 
     L2p[i] = erros[2];
-    H1p[i] = erros[3]; // Atribui a norma H1 da pressão
+    H1p[i] = erros[3]; 
+    L2T[i] = erros[4]; 
+    H1T[i] = erros[5]; 
 
     // Calcula a ordem de convergência
     if (i == 0) {
@@ -322,21 +336,27 @@ for (int i = 0; i < Ns.n; i++) {
         ordemH1u[i] = 0;
         ordemL2p[i] = 0;
         ordemH1p[i] = 0;
+        ordemL2T[i] = 0; 
+        ordemH1T[i] = 0; 
     } else {
         ordemL2u[i] = log(L2u[i-1]/L2u[i]) / log(hs[i-1]/hs[i]);
         ordemH1u[i] = log(H1u[i-1]/H1u[i]) / log(hs[i-1]/hs[i]);
         ordemL2p[i] = log(L2p[i-1]/L2p[i]) / log(hs[i-1]/hs[i]);
         ordemH1p[i] = log(H1p[i-1]/H1p[i]) / log(hs[i-1]/hs[i]);
+        ordemL2T[i] = log(L2T[i-1]/L2T[i]) / log(hs[i-1]/hs[i]); 
+        ordemH1T[i] = log(H1T[i-1]/H1T[i]) / log(hs[i-1]/hs[i]); 
     }
 }
 
 // Exporta os resultados para um arquivo CSV
 ofstream fout("tabela_erros.csv");
-fout << "h,L2u,Ordem_L2u,H1u,Ordem_H1u,L2p,Ordem_L2p,H1p,Ordem_H1p" << endl; // Cabeçalho atualizado
+fout << "h,L2u,Ordem_L2u,H1u,Ordem_H1u,L2p,Ordem_L2p,H1p,Ordem_H1p,L2T,Ordem_L2T,H1T,Ordem_H1T" << endl; // Cabeçalho 
 for (int i = 0; i < Ns.n; i++) {
     fout << hs[i] << ","
          << L2u[i] << "," << (i == 0 ? "NaN" : ordemL2u[i]) << ","
          << H1u[i] << "," << (i == 0 ? "NaN" : ordemH1u[i]) << ","
          << L2p[i] << "," << (i == 0 ? "NaN" : ordemL2p[i]) << ","
-         << H1p[i] << "," << (i == 0 ? "NaN" : ordemH1p[i]) << endl;
+         << H1p[i] << "," << (i == 0 ? "NaN" : ordemH1p[i]) << ","
+         << L2T[i] << "," << (i == 0 ? "NaN" : ordemL2T[i]) << "," 
+         << H1T[i] << "," << (i == 0 ? "NaN" : ordemH1T[i]) << endl; 
 }

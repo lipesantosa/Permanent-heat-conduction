@@ -16,10 +16,12 @@ try:
     print("\n")
 
     # Colunas de erro que queremos analisar
-    error_columns = ['L2u', 'H1u', 'L2p', 'H1p'] # Nomes das colunas de erro no seu CSV
+    # Adicionadas 'L2T' e 'H1T'
+    error_columns = ['L2u', 'H1u', 'L2p', 'H1p', 'L2T', 'H1T'] 
 
-    # Criar um figura para os subplots
-    plt.figure(figsize=(15, 10))
+    # Criar uma figura para os subplots
+    # Ajustado para 2 linhas e 3 colunas para acomodar 6 gráficos
+    plt.figure(figsize=(18, 12)) 
 
     # Iterar sobre cada coluna de erro para gerar o gráfico e calcular a ordem
     for i, error_col in enumerate(error_columns):
@@ -35,8 +37,8 @@ try:
         log_h = np.log(valid_data['h'])
         log_error = np.log(valid_data[error_col])
 
-        # Criar um subplot para cada tipo de erro
-        plt.subplot(2, 2, i + 1) # 2 linhas, 2 colunas de subplots
+        # Criar um subplot para cada tipo de erro (2 linhas, 3 colunas)
+        plt.subplot(2, 3, i + 1) 
 
         # Plotar os pontos (log(Erro) vs log(h))
         plt.scatter(log_h, log_error, label=f'Dados {error_col}', color='blue', marker='o')

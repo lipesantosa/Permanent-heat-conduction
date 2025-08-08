@@ -1,3 +1,0 @@
-h	Erro u1	Ordem u1	Erro u2	Ordem u2	Erro p	Ordem p
-0	0	-	0	-	0	-
-0.03125	0.697673	0	0.644987	0	0.622392	0
