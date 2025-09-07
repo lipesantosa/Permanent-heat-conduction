@@ -1,71 +1,75 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.stats import linregress
 
-# Nome do arquivo CSV gerado pelo FreeFem++
-csv_file = 'D:/Documentos/Permanent-heat-conduction/Petrov-Galerkin-Method/tabela_erros.csv'
+def plot_and_analyze_errors(filepath):
 
-try:
-    # Carregar os dados do CSV
-    df = pd.read_csv(csv_file)
 
-    # Exibir as primeiras linhas do DataFrame para verificar
-    print("Dados carregados do CSV:")
-    print(df.head())
-    print("\n")
 
-    # Colunas de erro que queremos analisar
-    # Adicionadas 'L2T' e 'H1T'
-    error_columns = ['L2u', 'H1u', 'L2p', 'H1p', 'L2T', 'H1T'] 
+    filepath = "D:/Documentos/Permanent-heat-conduction/Petrov-Galerkin-Method/tabela_erros.csv"
 
-    # Criar uma figura para os subplots
-    # Ajustado para 2 linhas e 3 colunas para acomodar 6 gráficos
-    plt.figure(figsize=(18, 12)) 
+    try:
+        df = pd.read_csv(filepath)
+    except FileNotFoundError:
+        print(f"Erro: O arquivo '{filepath}' não foi encontrado.")
+        return
 
-    # Iterar sobre cada coluna de erro para gerar o gráfico e calcular a ordem
-    for i, error_col in enumerate(error_columns):
-        # Filtrar linhas onde o erro não é NaN (para a primeira linha, onde a ordem é NaN)
-        # E garantir que os valores de erro e h sejam positivos para o log
-        valid_data = df[(df[error_col].notna()) & (df[error_col] > 0) & (df['h'] > 0)]
+    # Certifica-se de que os dados são numéricos e remove linhas com valores NaN
+    df = df.apply(pd.to_numeric, errors='coerce').dropna()
 
-        if valid_data.empty:
-            print(f"Não há dados válidos para a coluna '{error_col}' para plotar e calcular a ordem de convergência.")
-            continue
+    # Define as colunas de erro e as ordens de convergência
+    error_cols = ['L2u', 'H1u', 'L2p', 'H1p', 'L2T', 'H1T']
 
-        # Calcular log(h) e log(Erro)
-        log_h = np.log(valid_data['h'])
-        log_error = np.log(valid_data[error_col])
+    print("Análise de Erro e Ordem de Convergência:\n")
+    print("-" * 50)
 
-        # Criar um subplot para cada tipo de erro (2 linhas, 3 colunas)
-        plt.subplot(2, 3, i + 1) 
+    # Cria a figura e os eixos para o plot
+    fig, ax = plt.subplots(figsize=(10, 8))
 
-        # Plotar os pontos (log(Erro) vs log(h))
-        plt.scatter(log_h, log_error, label=f'Dados {error_col}', color='blue', marker='o')
+    # Calcula e plota os erros para cada coluna
+    for col in error_cols:
+        if col in df.columns and 'h' in df.columns:
+            # Obtém os dados de erro e tamanho da malha
+            h_values = df['h'].values
+            error_values = df[col].values
 
-        # Realizar regressão linear para encontrar a ordem de convergência (inclinação)
-        # Ignorar a primeira linha se a ordem for 'NaN' ou 0 para o cálculo da regressão
-        # A regressão linear será feita nos dados log-log
-        slope, intercept, r_value, p_value, std_err = linregress(log_h, log_error)
-        order_of_convergence = -slope # A ordem de convergência é geralmente o negativo da inclinação em log(Erro) vs log(h)
+            # Remove os valores com erro zero para evitar problemas no log
+            valid_indices = error_values > 0
+            h_valid = h_values[valid_indices]
+            error_valid = error_values[valid_indices]
 
-        # Plotar a linha de regressão
-        plt.plot(log_h, intercept + slope * log_h, color='red', linestyle='--', label=f'Regressão (Ordem: {order_of_convergence:.2f})')
+            if len(h_valid) < 2:
+                print(f"Atenção: A coluna '{col}' não tem dados suficientes para plotar e calcular a ordem de convergência.")
+                continue
 
-        # Adicionar rótulos e título
-        plt.xlabel('log(h)')
-        plt.ylabel(f'log({error_col})')
-        plt.title(f'Convergência da Norma {error_col}')
-        plt.legend()
-        plt.grid(True)
+            # Plota os dados em escala log-log
+            ax.loglog(h_valid, error_valid, 'o-', label=f'Erro {col}')
 
-        print(f"Ordem de Convergência para {error_col}: {order_of_convergence:.4f}")
+            # Calcula a ordem de convergência (inclinação da linha log-log)
+            # Usa os últimos dois pontos para uma estimativa mais representativa
+            if len(h_valid) >= 2:
+                last_two_h = h_valid[-2:]
+                last_two_errors = error_valid[-2:]
+                
+                # A ordem é a inclinação da reta no gráfico log-log
+                order = np.log(last_two_errors[0] / last_two_errors[1]) / np.log(last_two_h[0] / last_two_h[1])
+                print(f"Erro {col}: A ordem de convergência (inclinação) é de aproximadamente {order:.2f}")
 
-    plt.tight_layout() # Ajusta o layout para evitar sobreposição
+                # Adiciona o valor da ordem de convergência no gráfico
+                ax.text(h_valid[-1], error_valid[-1], f' Ordem: {order:.2f}', fontsize=10, verticalalignment='bottom', horizontalalignment='right')
+
+    # Configurações do gráfico
+    ax.set_title('Gráfico de Erro vs. Tamanho da Malha (Log-Log)', fontsize=16)
+    ax.set_xlabel('Tamanho da Malha (h)', fontsize=12)
+    ax.set_ylabel('Erro', fontsize=12)
+    ax.grid(True, which="both", ls="--")
+    ax.legend()
+    plt.tight_layout()
     plt.show()
 
-except FileNotFoundError:
-    print(f"Erro: O arquivo '{csv_file}' não foi encontrado. Certifique-se de que o CSV foi gerado e está no mesmo diretório do script Python.")
-except Exception as e:
-    print(f"Ocorreu um erro: {e}")
+    print("\nResumo da Análise:")
+    print("-" * 50)
 
+# Executa a função com o arquivo fornecido pelo usuário
+if __name__ == "__main__":
+    plot_and_analyze_errors('tabela_erros.csv')

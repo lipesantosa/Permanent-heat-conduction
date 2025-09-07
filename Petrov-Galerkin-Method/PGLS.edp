@@ -12,30 +12,30 @@ load "iovtk"
 func real[int] runSimulation(int n) {
 
     // ---- Malha ----
-    border a1(t=0,1){x=t; y=0; label=2;}
-    border a2(t=0,1){x=1; y=t; label=2;}
-    border a3(t=0,1){x=1-t; y=1; label=1;}
-    border a4(t=0,1){x=0; y=1-t; label=2;}
-    mesh Th = buildmesh(a1(n)+a2(n)+a3(n)+a4(n));
+      border a1(t=0,1){x=t; y=0; label=2;}
+      border a2(t=0,1){x=1; y=t; label=2;}
+      border a3(t=0,1){x=1-t; y=1; label=1;}
+      border a4(t=0,1){x=0; y=1-t; label=2;}
+      mesh Th = buildmesh(a1(n)+a2(n)+a3(n)+a4(n));
 
     // ---- Espaços ----
-    fespace Vh(Th, P1);
-    fespace Qh(Th, P1);
-    fespace ThT(Th, P1);
+      fespace Vh(Th, P1);
+      fespace Qh(Th, P1);
+      fespace ThT(Th, P1);
 
-    Vh u1, u2, u1old, u2old, v1, v2, ht, ReTest;
-    Qh p, q;
-    Vh du1, du2;
-    ThT T, Told, theta, dTn, Pe;
+      Vh u1, u2, u1old, u2old, v1, v2, ht, ReTest;
+      Qh p, q;
+      Vh du1, du2;
+      ThT T, Told, theta, dTn, Pe;
 
     // ---- Parâmetros ----
-    real Re = 100;      // Reynolds
-    real nu = 1.0/Re;   // Viscosidade
-    real dt = 0.001;     // Passo de tempo
-    int  nmax = 10;     // Passos de tempo
-    int  itmax = 20;    // Iterações de Picard
-    real kappa = 0.01;  // Condutividade
-    real pi = acos(-1);
+      real Re = 100;      // Reynolds
+      real nu = 1.0/Re;   // Viscosidade
+      real dt = 0.001;     // Passo de tempo
+      int  nmax = 10;     // Passos de tempo
+      int  itmax = 20;    // Iterações de Picard
+      real kappa = 0.01;  // Condutividade
+      real pi = acos(-1);
 
     // ---- Solução exata (MMS) ----
     Vh u1exactFunc =  pi * cos(pi*y) * sin(pi*x);
@@ -56,7 +56,7 @@ func real[int] runSimulation(int n) {
     macro umod() sqrt(u1old^2 + u2old^2)  //
     macro Pe()     ((umod)*ht/(2.0*kappa)) //
     macro xi(pe)   ( ((pe) < 1.0 ? (pe) : 1.0 )) //
-    // macro tau()  ( 1.0 / sqrt( (2.0/dt)^2 + (2.0*umod/ht)^2 + (Cnu*nu/(ht^2))^2 ) ) //
+    //macro tau()  ( 1.0 / sqrt( (2.0/dt)^2 + (2.0*umod/ht)^2 + (Cnu*nu/(ht^2))^2 ) ) //
     macro tau() (1.0e-4 / (sqrt ((2.0*umod/ht)^2 + (4.0*nu/ht^2)^2))) //
     macro tauT() ( ht/(2*umod + 1e-10) * ( 1.0/tanh(Pe) - 1.0/Pe ) ) //
     // macro tauT()   ( (ht/(2.0*umod)) * xi(Pe)) //
@@ -86,6 +86,7 @@ func real[int] runSimulation(int n) {
     // auxiliares (u/dt)
     Vh u1DivDt = u1/dt, u2DivDt = u2/dt;
     Vh u1oldDivDt = u1old/dt, u2oldDivDt = u2old/dt;
+    ThT TDivDT = T/dt, ToldDivDt = Told/dt;
     // ---- Loop no tempo ----
     for (int nTimeStep = 0; nTimeStep < nmax; ++nTimeStep) {
         cout << "\n>>> Passo = " << nTimeStep << ", t = " << nTimeStep*dt << endl;
@@ -117,15 +118,9 @@ func real[int] runSimulation(int n) {
                     )
                   )
                 + int2d(Th)
-                  ( tau*(( u1old*dx(u1)*u1old*dx(v1)) +
-                    ( u1old*dx(u1)*u2old*dy(v1)) +
-                    ( u2old*dy(u1)*u1old*dx(v1)) +
-                    ( u2old*dy(u1)*u2old*dy(v1)) +
-                    ( u1old*dx(u2)*u1old*dx(v2)) +
-                    ( u1old*dx(u2)*u2old*dy(v2)) +
-                    ( u2old*dy(u2)*u1old*dx(v2)) +
-                    ( u2old*dy(u2)*u2old*dy(v2)) )
-                  )
+                  ( (tau) * (u1old*dx(v1) + u2old*dy(v1))*(u1old*dx(u1)+u2old*dy(u1)) + 
+                  (u1old*dx(v2) + u2old*dy(v2))*(u1old*dx(u2)+u2old*dy(u2)))
+                
                 + int2d(Th)
                   ( tau*(dx(p)*(u1old*dx(v1)+u2old*dy(v1)) +
                     dy(p)*(u1old*dx(v2) + u2old*dy(v2)))
@@ -187,116 +182,131 @@ func real[int] runSimulation(int n) {
 
               // Continuidade
                 + int2d(Th)(
-                  delta * ( dx(u1)*dx(v1) + dx(u1)*dy(v2) + dx(u2)*dx(v1) + dx(u2)*dy(v2) )
+                  delta * (dx(u1) + dy(u2)) * (dx(v1) + dy(v2))
                 )
 
                 // BCs MMS: Dirichlet exatas em toda a borda
                 + on(1, 2, u1 = u1exact, u2 = u2exact)
                 ;
 
-
   
         // ===== Navier–Stokes com GLS EXPANDIDO =====
         for (int it=0; it<itmax; ++it) {
             cout << "   Picard it = " << it << endl;
             NSE;        
-        // ReTest = (tau * ((u1old*dx(v1) + u2old(v1) + u1old*dx(v2) + u2old*dy(v2)) - (dx(q) + dy(q)) - nu((dxx(v1) + dyy(v1)) + (dxx(v2) + dyy(v2)))));
+
 
             // atualiza para próximo passo
             u1old = u1; u2old = u2;
         }
 
-        // ===== Equação do Calor (SUPG) =====
-        dTn = (T - Told)/dt;
+                  // ===== Equação do Calor (SUPG) =====
+        solve heat(T,theta) =
+            int2d(Th)(
+                (T/dt)*theta
+            + (u1*dx(T) + u2*dy(T))*theta
+            + kappa*(dx(T)*dx(theta) + dy(T)*dy(theta))
+            )        
+          - int2d(Th)((Told/dt)*theta)
 
-        // solve heat(T,theta) =
-        //   int2d(Th)( (T/dt)*theta + (u1*dx(T)+u2*dy(T))*theta + kappa*(dx(T)*dx(theta)+dy(T)*dy(theta)) )
+          // == Estabilização ==
+          // Primeira parte (u*grad(theta)* (dT_t + u*gradT - kappa*lapT - fT )
+          + int2d(Th)(tauT*((u1*dx(theta) + u2*dy(theta))* (TDivDT)))
+          - int2d(Th)(tauT*((u1*dx(theta) + u2*dy(theta))* (ToldDivDt)))
+          + int2d(Th)(tauT*((u1*dx(theta)*u1*dx(T) + u2*dy(theta)*u2*dy(T))))
+          - int2d(Th)(tauT*kappa*((u1*dx(theta) + u2*dy(theta))*(dxx(T) + dyy(T))))
+          - int2d(Th)(tauT * fTfunc*(u1*dx(theta) + u2*dy(theta)))
 
-        //   + int2d(Th)( tauT * ( (T/dt) + u1*dx(T) + u2*dy(T) - kappa*(dxx(T)+dyy(T))  ) * ( u1*dx(theta) + u2*dy(theta) + kappa*(dxx(theta) + dyy(theta)) ) )
-        //   - int2d(Th)( tau * ((Told/dt) + fTfunc) * ( u1*dx(theta) + u2*dy(theta) + kappa*(dxx(theta) + dyy(theta))))
-        //   - int2d(Th)( (Told/dt)*theta + fTfunc*theta )
-        //   + on(1,2,T=Texact);
+          // Segunda parte (kappa*lap(theta)* (dT_t + u*gradT - kappa*lapT - fT )
+          + int2d(Th)(tauT*kappa*((dxx(theta) + dyy(theta))* (TDivDT)))
+          - int2d(Th)(tauT*kappa*((dxx(theta) + dyy(theta))* (ToldDivDt)))
+          + int2d(Th)(tauT*kappa*((dxx(theta) + dyy(theta))*dx(T) + (dxx(theta) + dyy(theta))*dy(T)))
+          - int2d(Th)(tauT*kappa*kappa*((dxx(theta) + dyy(theta))*(dxx(T) + dyy(T))))
+          - int2d(Th)(tauT * kappa* fTfunc*(dxx(theta) + dyy(theta)))      
+          + on(1,2,T=Texact);
 
-      plot ([u1,u2] , fill =1, wait=0);
+        Told = T;
+
+      //plot ([u1,u2], fill=1, wait=0);
     
         
     }
 
     // ===== Erros finais =====
 
-    // --- Cálculo das Normas L2 ---
-    // A forma como você calculou a norma L2 para cada componente está correta.
-    real L2u1 = sqrt(int2d(Th)((u1 - u1exact)^2));
-    real L2u2 = sqrt(int2d(Th)((u2 - u2exact)^2));
-    real L2p = sqrt(int2d(Th)((p - pexact)^2));
-    real L2T = sqrt(int2d(Th)((T - Texact)^2));
+      // --- Cálculo das Normas L2 ---
+      // A forma como você calculou a norma L2 para cada componente está correta.
+      real L2u1 = sqrt(int2d(Th)((u1 - u1exact)^2));
+      real L2u2 = sqrt(int2d(Th)((u2 - u2exact)^2));
+      real L2p = sqrt(int2d(Th)((p - pexact)^2));
+      real L2T = sqrt(int2d(Th)((T - Texact)^2));
 
-    // Norma L2 total do vetor velocidade (u)
-    real L2u = sqrt(L2u1^2 + L2u2^2);
+      // Norma L2 total do vetor velocidade (u)
+      real L2u = sqrt(L2u1^2 + L2u2^2);
 
-    // --- Correção: Cálculo das Normas H1 ---
-    // Para a norma H1, precisamos do erro da função e do erro de sua derivada.
-    // Usamos fespace Vh para projetar as funções de erro, facilitando o cálculo das derivadas.
-    // O erro da pressão pode ser projetado em um espaço de funções H1, como o Vh,
-    // para calcular o termo de derivada da norma H1.
-    Vh eu1 = u1 - u1exact;
-    Vh eu2 = u2 - u2exact;
-    Vh epV = p - pexact;
-    Vh eT = T - Texact;
+      // --- Correção: Cálculo das Normas H1 ---
+      // Para a norma H1, precisamos do erro da função e do erro de sua derivada.
+      // Usamos fespace Vh para projetar as funções de erro, facilitando o cálculo das derivadas.
+      // O erro da pressão pode ser projetado em um espaço de funções H1, como o Vh,
+      // para calcular o termo de derivada da norma H1.
+      Vh eu1 = u1 - u1exact;
+      Vh eu2 = u2 - u2exact;
+      Vh epV = p - pexact;
+      Vh eT = T - Texact;
 
-    // A norma H1 de um vetor é a soma do L2 do vetor com o L2 de seu gradiente.
-    // Aqui está a forma correta de calcular o gradiente do vetor de erro.
-    real H1uTotal = sqrt( int2d(Th)(eu1^2 + eu2^2 + dx(eu1)^2 + dy(eu1)^2 + dx(eu2)^2 + dy(eu2)^2) );
+      // A norma H1 de um vetor é a soma do L2 do vetor com o L2 de seu gradiente.
+      // Aqui está a forma correta de calcular o gradiente do vetor de erro.
+      real H1uTotal = sqrt( int2d(Th)(eu1^2 + eu2^2 + dx(eu1)^2 + dy(eu1)^2 + dx(eu2)^2 + dy(eu2)^2) );
 
-    // A norma H1 da pressão é a soma do L2 da pressão com o L2 de seu gradiente.
-    // A projeção de p em Vh já foi feita, agora é só calcular.
-    real H1pNorm = sqrt( int2d(Th)(epV^2 + dx(epV)^2 + dy(epV)^2) );
+      // A norma H1 da pressão é a soma do L2 da pressão com o L2 de seu gradiente.
+      // A projeção de p em Vh já foi feita, agora é só calcular.
+      real H1pNorm = sqrt( int2d(Th)(epV^2 + dx(epV)^2 + dy(epV)^2) );
 
-    // A norma H1 da temperatura.
-    real H1TNorm = sqrt( int2d(Th)(eT^2 + dx(eT)^2 + dy(eT)^2) );
+      // A norma H1 da temperatura.
+      real H1TNorm = sqrt( int2d(Th)(eT^2 + dx(eT)^2 + dy(eT)^2) );
 
-    // Ajuste no array de retorno para coincidir com os nomes de variáveis
-    real[int] erros(6);
-    erros[0] = L2u;
-    erros[1] = H1uTotal;
-    erros[2] = L2p;
-    erros[3] = H1pNorm;
-    erros[4] = L2T;
-    erros[5] = H1TNorm;
+      // Ajuste no array de retorno para coincidir com os nomes de variáveis
+      real[int] erros(6);
+      erros[0] = L2u;
+      erros[1] = H1uTotal;
+      erros[2] = L2p;
+      erros[3] = H1pNorm;
+      erros[4] = L2T;
+      erros[5] = H1TNorm;
 
-    return erros;
-}
+      return erros;
+  }
 
-// ===== Convergência + CSV (igual ao seu) =====
-int[int] Ns = [8, 16, 32, 64, 128, 256];
-real[int] hs(Ns.n);
-real[int] L2u(Ns.n), H1u(Ns.n), L2p(Ns.n), H1p(Ns.n), L2T(Ns.n), H1T(Ns.n);
-real[int] ordemL2u(Ns.n), ordemH1u(Ns.n), ordemL2p(Ns.n), ordemH1p(Ns.n), ordemL2T(Ns.n), ordemH1T(Ns.n);
+  // ===== Convergência + CSV (igual ao seu) =====
+    int[int] Ns = [8, 16, 32, 64, 128];
+    real[int] hs(Ns.n);
+    real[int] L2u(Ns.n), H1u(Ns.n), L2p(Ns.n), H1p(Ns.n), L2T(Ns.n), H1T(Ns.n);
+    real[int] ordemL2u(Ns.n), ordemH1u(Ns.n), ordemL2p(Ns.n), ordemH1p(Ns.n), ordemL2T(Ns.n), ordemH1T(Ns.n);
 
-for (int i=0;i<Ns.n;i++){
-    int n = Ns[i];
-    real h = 1.0/n; hs[i]=h;
-    real[int] e = runSimulation(n);
-    L2u[i]=e[0]; H1u[i]=e[1]; L2p[i]=e[2]; H1p[i]=e[3]; L2T[i]=e[4]; H1T[i]=e[5];
-    if(i==0){ordemL2u[i]=ordemH1u[i]=ordemL2p[i]=ordemH1p[i]=ordemL2T[i]=ordemH1T[i]=0;}
-    else{
-        ordemL2u[i]=log(L2u[i-1]/L2u[i])/log(hs[i-1]/hs[i]);
-        ordemH1u[i]=log(H1u[i-1]/H1u[i])/log(hs[i-1]/hs[i]);
-        ordemL2p[i]=log(L2p[i-1]/L2p[i])/log(hs[i-1]/hs[i]);
-        ordemH1p[i]=log(H1p[i-1]/H1p[i])/log(hs[i-1]/hs[i]);
-        ordemL2T[i]=log(L2T[i-1]/L2T[i])/log(hs[i-1]/hs[i]);
-        ordemH1T[i]=log(H1T[i-1]/H1T[i])/log(hs[i-1]/hs[i]);
+    for (int i=0;i<Ns.n;i++){
+        int n = Ns[i];
+        real h = 1.0/n; hs[i]=h;
+        real[int] e = runSimulation(n);
+        L2u[i]=e[0]; H1u[i]=e[1]; L2p[i]=e[2]; H1p[i]=e[3]; L2T[i]=e[4]; H1T[i]=e[5];
+        if(i==0){ordemL2u[i]=ordemH1u[i]=ordemL2p[i]=ordemH1p[i]=ordemL2T[i]=ordemH1T[i]=0;}
+        else{
+            ordemL2u[i]=log(L2u[i-1]/L2u[i])/log(hs[i-1]/hs[i]);
+            ordemH1u[i]=log(H1u[i-1]/H1u[i])/log(hs[i-1]/hs[i]);
+            ordemL2p[i]=log(L2p[i-1]/L2p[i])/log(hs[i-1]/hs[i]);
+            ordemH1p[i]=log(H1p[i-1]/H1p[i])/log(hs[i-1]/hs[i]);
+            ordemL2T[i]=log(L2T[i-1]/L2T[i])/log(hs[i-1]/hs[i]);
+            ordemH1T[i]=log(H1T[i-1]/H1T[i])/log(hs[i-1]/hs[i]);
+        }
     }
-}
 
-ofstream fout("tabela_erros.csv");
-fout << "h,L2u,Ordem_L2u,H1u,Ordem_H1u,L2p,Ordem_L2p,H1p,Ordem_H1p,L2T,Ordem_L2T,H1T,Ordem_H1T\n";
-for (int i=0;i<Ns.n;i++){
-    fout << hs[i] << ","
-         << L2u[i] << "," << (i==0?"NaN":ordemL2u[i]) << ","
-         << H1u[i] << "," << (i==0?"NaN":ordemH1u[i]) << ","
-         << L2p[i] << "," << (i==0?"NaN":ordemL2p[i]) << ","
-         << H1p[i] << "," << (i==0?"NaN":ordemH1p[i]) << ","
-         << L2T[i] << "," << (i==0?"NaN":ordemL2T[i]) << ","
-         << H1T[i] << "," << (i==0?"NaN":ordemH1T[i]) << "\n";
-}
+    ofstream fout("tabela_erros.csv");
+    fout << "h,L2u,Ordem_L2u,H1u,Ordem_H1u,L2p,Ordem_L2p,H1p,Ordem_H1p,L2T,Ordem_L2T,H1T,Ordem_H1T\n";
+    for (int i=0;i<Ns.n;i++){
+        fout << hs[i] << ","
+            << L2u[i] << "," << (i==0?"0":ordemL2u[i]) << ","
+            << H1u[i] << "," << (i==0?"0":ordemH1u[i]) << ","
+            << L2p[i] << "," << (i==0?"0":ordemL2p[i]) << ","
+            << H1p[i] << "," << (i==0?"0":ordemH1p[i]) << ","
+            << L2T[i] << "," << (i==0?"0":ordemL2T[i]) << ","
+            << H1T[i] << "," << (i==0?"0":ordemH1T[i]) << "\n";
+    }
