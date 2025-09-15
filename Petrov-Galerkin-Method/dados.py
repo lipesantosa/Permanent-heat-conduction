@@ -1,75 +1,98 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 
-def plot_and_analyze_errors(filepath):
+# Substitua pelo seu caminho
+csvfile = r"D:/Documentos/Permanent-heat-conduction/Petrov-Galerkin-Method/tabela_erros.csv"
 
+df = pd.read_csv(csvfile)
 
+# Colunas esperadas
+error_cols = ['L2u', 'H1u', 'L2p', 'H1p', 'L2T', 'H1T']
+if 'h' not in df.columns:
+    raise RuntimeError("A coluna 'h' (tamanho de malha) não foi encontrada no CSV.")
 
-    filepath = "D:/Documentos/Permanent-heat-conduction/Petrov-Galerkin-Method/tabela_erros.csv"
+# Ordena por h crescente (h pequeno = malha refinada)
+df = df.sort_values('h').reset_index(drop=True)
 
-    try:
-        df = pd.read_csv(filepath)
-    except FileNotFoundError:
-        print(f"Erro: O arquivo '{filepath}' não foi encontrado.")
-        return
+# Prepara subplots
+ncols = 2
+nrows = int(np.ceil(len(error_cols)/ncols))
+fig, axes = plt.subplots(nrows, ncols, figsize=(12, 10))
+axes = axes.ravel()
 
-    # Certifica-se de que os dados são numéricos e remove linhas com valores NaN
-    df = df.apply(pd.to_numeric, errors='coerce').dropna()
+results = {}
 
-    # Define as colunas de erro e as ordens de convergência
-    error_cols = ['L2u', 'H1u', 'L2p', 'H1p', 'L2T', 'H1T']
+for i, col in enumerate(error_cols):
+    ax = axes[i]
+    if col not in df.columns:
+        ax.set_visible(False)
+        continue
 
-    print("Análise de Erro e Ordem de Convergência:\n")
-    print("-" * 50)
+    h = df['h'].to_numpy()
+    err = df[col].to_numpy()
 
-    # Cria a figura e os eixos para o plot
-    fig, ax = plt.subplots(figsize=(10, 8))
+    # Filtra valores válidos
+    mask = np.isfinite(err) & (err > 0)
+    h = h[mask]
+    err = err[mask]
 
-    # Calcula e plota os erros para cada coluna
-    for col in error_cols:
-        if col in df.columns and 'h' in df.columns:
-            # Obtém os dados de erro e tamanho da malha
-            h_values = df['h'].values
-            error_values = df[col].values
+    if len(h) < 2:
+        ax.text(0.5, 0.5, f"Poucos dados em {col}", ha='center', va='center')
+        continue
 
-            # Remove os valores com erro zero para evitar problemas no log
-            valid_indices = error_values > 0
-            h_valid = h_values[valid_indices]
-            error_valid = error_values[valid_indices]
+    # Ajuste log-log
+    logh = np.log(h)
+    logerr = np.log(err)
+    coef = np.polyfit(logh, logerr, 1)
+    slope = coef[0]
 
-            if len(h_valid) < 2:
-                print(f"Atenção: A coluna '{col}' não tem dados suficientes para plotar e calcular a ordem de convergência.")
-                continue
+    # Reta de referência
+    h_fit = np.linspace(h.max(), h.min(), 50)
 
-            # Plota os dados em escala log-log
-            ax.loglog(h_valid, error_valid, 'o-', label=f'Erro {col}')
+    err_fit = np.exp(np.polyval(coef, np.log(h_fit)))
 
-            # Calcula a ordem de convergência (inclinação da linha log-log)
-            # Usa os últimos dois pontos para uma estimativa mais representativa
-            if len(h_valid) >= 2:
-                last_two_h = h_valid[-2:]
-                last_two_errors = error_valid[-2:]
-                
-                # A ordem é a inclinação da reta no gráfico log-log
-                order = np.log(last_two_errors[0] / last_two_errors[1]) / np.log(last_two_h[0] / last_two_h[1])
-                print(f"Erro {col}: A ordem de convergência (inclinação) é de aproximadamente {order:.2f}")
-
-                # Adiciona o valor da ordem de convergência no gráfico
-                ax.text(h_valid[-1], error_valid[-1], f' Ordem: {order:.2f}', fontsize=10, verticalalignment='bottom', horizontalalignment='right')
-
-    # Configurações do gráfico
-    ax.set_title('Gráfico de Erro vs. Tamanho da Malha (Log-Log)', fontsize=16)
-    ax.set_xlabel('Tamanho da Malha (h)', fontsize=12)
-    ax.set_ylabel('Erro', fontsize=12)
-    ax.grid(True, which="both", ls="--")
+    # Plot
+    ax.loglog(h, err, 'o-', label=f'Erro {col}')
+    ax.loglog(h_fit, err_fit, '--', label=f'Fit slope = {slope:.2f}')
+    ax.invert_xaxis()  # mostra refinamento à direita
+    ax.set_xlabel('h')
+    ax.set_ylabel('Erro')
+    ax.set_title(f'{col}: ordem ≈ {slope:.2f}')
+    ax.grid(True, which='both', ls='--')
     ax.legend()
-    plt.tight_layout()
-    plt.show()
 
-    print("\nResumo da Análise:")
-    print("-" * 50)
+    results[col] = slope
 
-# Executa a função com o arquivo fornecido pelo usuário
-if __name__ == "__main__":
-    plot_and_analyze_errors('tabela_erros.csv')
+# Ajusta layout
+plt.tight_layout()
+plt.show()
+
+# Imprime resumo no terminal
+print("\nResumo das ordens de convergência (ajuste log-log):")
+for col, slope in results.items():
+    print(f"{col:>4}: {slope:.3f}")
+
+
+# import numpy as np, pandas as pd
+# csv = r"D:/Documentos/Permanent-heat-conduction/Petrov-Galerkin-Method/tabela_erros.csv"
+# df = pd.read_csv(csv).sort_values('h').reset_index(drop=True)
+# cols = ['L2u','H1u','L2p','H1p','L2T','H1T']
+# for col in cols:
+#     if col not in df.columns: continue
+#     h = df['h'].to_numpy(); err = df[col].to_numpy()
+#     mask = np.isfinite(err) & (err>0)
+#     h = h[mask]; err = err[mask]
+#     print("\n===", col, "===")
+#     for hi, ei in zip(h, err):
+#         print(f"h={hi:.6g}, err={ei:.6g}")
+#     if len(h)<2: continue
+#     # slopes locais
+#     slopes = [np.log(err[i-1]/err[i])/np.log(h[i-1]/h[i]) for i in range(1,len(h))]
+#     print("slopes locais:", np.array(slopes))
+#     # robust fit: remover outlier quando erro cresce > 10x
+#     mask_ok = np.ones_like(err, bool)
+#     for i in range(1,len(err)):
+#         if err[i] > 10*err[i-1]: mask_ok[i]=False
+#     coef = np.polyfit(np.log(h[mask_ok]), np.log(err[mask_ok]), 1)
+#     print("slope fit robust:", coef[0])

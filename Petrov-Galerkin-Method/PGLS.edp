@@ -19,29 +19,31 @@ func real[int] runSimulation(int n) {
       mesh Th = buildmesh(a1(n)+a2(n)+a3(n)+a4(n));
 
     // ---- Espaços ----
-      fespace Vh(Th, P1);
-      fespace Qh(Th, P1);
-      fespace ThT(Th, P1);
+      fespace Vh(Th, P2);
+      fespace Qh(Th, P2);
+      fespace ThT(Th, P2);
+      fespace Ht(Th, P0);
 
-      Vh u1, u2, u1old, u2old, v1, v2, ht, ReTest;
+      Vh u1, u2, u1old, u2old, v1, v2, ReTest;
       Qh p, q;
       Vh du1, du2;
       ThT T, Told, theta, dTn, Pe;
+      Ht ht;
 
     // ---- Parâmetros ----
-      real Re = 100;      // Reynolds
+      real Re = 400;      // Reynolds
       real nu = 1.0/Re;   // Viscosidade
-      real dt = 0.001;     // Passo de tempo
-      int  nmax = 10;     // Passos de tempo
-      int  itmax = 20;    // Iterações de Picard
+      real dt = 1e-6;     // Passo de tempo
+      int  nmax = 3;     // Passos de tempo
+      int  itmax = 1;    // Iterações de Picard
       real kappa = 0.01;  // Condutividade
       real pi = acos(-1);
 
     // ---- Solução exata (MMS) ----
     Vh u1exactFunc =  pi * cos(pi*y) * sin(pi*x);
     Vh u2exactFunc = -pi * cos(pi*x) * sin(pi*y);
-    Qh pexactFunc  =      cos(pi*x) * cos(pi*y);
-    Vh TexactFunc  =      sin(pi*x) * sin(pi*y);
+    Vh pexactFunc  =      cos(pi*x) * cos(pi*y);
+    ThT TexactFunc  =      sin(pi*x) * sin(pi*y);
 
     // ---- Inicialização no estado exato ----
     u1old = u1exactFunc;
@@ -49,26 +51,26 @@ func real[int] runSimulation(int n) {
     Told  = TexactFunc;
 
     // ---- Estabilização ----
-    real Cnu = 4;
     real lambda = 0.5;      // para o termo de divergência
 
-    macro ht()      hTriangle //
-    macro umod() sqrt(u1old^2 + u2old^2)  //
-    macro Pe()     ((umod)*ht/(2.0*kappa)) //
-    macro xi(pe)   ( ((pe) < 1.0 ? (pe) : 1.0 )) //
-    //macro tau()  ( 1.0 / sqrt( (2.0/dt)^2 + (2.0*umod/ht)^2 + (Cnu*nu/(ht^2))^2 ) ) //
-    macro tau() (1.0e-4 / (sqrt ((2.0*umod/ht)^2 + (4.0*nu/ht^2)^2))) //
-    macro tauT() ( ht/(2*umod + 1e-10) * ( 1.0/tanh(Pe) - 1.0/Pe ) ) //
-    // macro tauT()   ( (ht/(2.0*umod)) * xi(Pe)) //
-    macro delta() ( lambda * ht/(2*umod + 1e-10) ) //
+    // macros 
+      macro ht()      hTriangle //
+      macro umod() sqrt(u1old^2 + u2old^2) //
+      macro Pe()     ((1./12)*umod*ht/(2.0*(1./kappa))) //
+      macro ReK()   (((1./12)*umod*ht)/(4*(1./nu))) //
+      macro xi(pe)   ( ((pe) < 1.0 ? (pe) : 1.0 )) //
+      // macro tau()  ( (ht/(2*umod) * xi(ReK))) //
+      macro tau() (1.0e-4 / (sqrt ((2/dt)^2 + (2.0*umod/ht)^2 + (4.0*nu/ht^2)^2))) //
+      macro tauT() ( ht/(2*umod) * xi(Pe)) //
+      // macro tauT()  (((1./12) * ht^2)/(4*kappa)) //
+      macro delta() ( lambda * ht*xi(ReK) ) //
 
-
-    // ht = hTriangle;
-    // macro tau() (ht/(2*umod)) * ((umod * ht)/nu)//
-    // // macro tau() (1.0e-3 / sqrt((2/dt)^2 + (2.0*umod/ht)^2 + (4.0*nu/(ht^2))^2)) //
-    // macro Peclet() (umod * ht)/(2.0*kappa) //
-    // macro tauT() (ht/(2*umod*kappa)) * ((umod*ht)/kappa) //
-    // macro delta() (ht/(2.0*umod + 1e-10))
+      // ht = hTriangle;
+      // macro tau() (ht/(2*umod)) * ((umod * ht)/nu)//
+      // // macro tau() (1.0e-3 / sqrt((2/dt)^2 + (2.0*umod/ht)^2 + (4.0*nu/(ht^2))^2)) //
+      // macro Peclet() (umod * ht)/(2.0*kappa) //
+      // macro tauT() (ht/(2*umod*kappa)) * ((umod*ht)/kappa) //
+      // macro delta() (ht/(2.0*umod + 1e-10))
 
     // Projeta solução exata
     Vh u1exact = u1exactFunc;
@@ -77,23 +79,21 @@ func real[int] runSimulation(int n) {
     ThT Texact = TexactFunc;
 
     // Termos-fonte consistentes
-    func fxfunc = (u1exact*dx(u1exact) + u2exact*dy(u1exact)) + dx(pexact)
-                - nu*(dxx(u1exact) + dyy(u1exact));
-    func fyfunc = (u1exact*dx(u2exact) + u2exact*dy(u2exact)) + dy(pexact)
-                - nu*(dxx(u2exact) + dyy(u2exact));
-    func fTfunc = (u1exact*dx(Texact) + u2exact*dy(Texact))
-                - kappa*(dxx(Texact) + dyy(Texact));
+      func fxfunc = (u1exact*dx(u1exact) + u2exact*dy(u1exact)) + dx(pexact)
+                  - nu*(dxx(u1exact) + dyy(u1exact));
+      func fyfunc = (u1exact*dx(u2exact) + u2exact*dy(u2exact)) + dy(pexact)
+                  - nu*(dxx(u2exact) + dyy(u2exact));
+      func fTfunc = (u1exact*dx(Texact) + u2exact*dy(Texact))
+                  - kappa*(dxx(Texact) + dyy(Texact));
     // auxiliares (u/dt)
     Vh u1DivDt = u1/dt, u2DivDt = u2/dt;
     Vh u1oldDivDt = u1old/dt, u2oldDivDt = u2old/dt;
     ThT TDivDT = T/dt, ToldDivDt = Told/dt;
+
     // ---- Loop no tempo ----
     for (int nTimeStep = 0; nTimeStep < nmax; ++nTimeStep) {
-        cout << "\n>>> Passo = " << nTimeStep << ", t = " << nTimeStep*dt << endl;
+        cout << "\n>>> Passo = " << nTimeStep << ", t = " << nTimeStep*dt << ", n = " << n << endl;
 
-        // estado inicial Picard
-        u1 = u1old;
-        u2 = u2old;
           problem NSE([u1, u2, p], [v1, v2, q]) =
                   int2d(Th)(
                       // Galerkin padrão
@@ -106,6 +106,7 @@ func real[int] runSimulation(int n) {
                     - 1e-6*p*q
                   )
                 - int2d(Th)((1.0/dt)*(u1old*v1 + u2old*v2))
+                - int2d(Th)( fxfunc * v1 + fyfunc * v2 )
                 // primeira parte (u.grad(v) ∗ (du_t + u.grad(u) + grad(p) − nu∗lap(u) - f))
                 + int2d(Th)((tau) * (
                           (u1DivDt)*u1old*dx(v1) + u2DivDt*u2old*dy(v1)
@@ -122,13 +123,12 @@ func real[int] runSimulation(int n) {
                   (u1old*dx(v2) + u2old*dy(v2))*(u1old*dx(u2)+u2old*dy(u2)))
                 
                 + int2d(Th)
-                  ( tau*(dx(p)*(u1old*dx(v1)+u2old*dy(v1)) +
-                    dy(p)*(u1old*dx(v2) + u2old*dy(v2)))
-                  )
-                - int2d(Th)
-                  ( tau*nu*( (dxx(u1)+dyy(u1))*( u1old*dx(v1)+u2old*dy(v1)) +
-                    (dxx(u2)+dyy(u2))*( u1old*dx(v2) + u2old*dy(v2)))
-                  )
+                  ( tau*(dx(p)*(u1old*dx(v1)) + dy(p)*(u2old*dy(v1)) +
+                    dx(p)*(u1old*dx(v2)) + dy(p)*(u2old*dy(v2))))
+                - int2d(Th)(
+                  (tau)*nu * ((dxx(u1) + dyy(u1)) * (u1old*(dx(v1)+dy(v1)) + u2old*(dx(v2) + dy(v2)))
+                  + (dxx(u2) + dyy(u2)) * (u1old*(dx(v1)+dy(v1)) + u2old*(dx(v2) + dy(v2)))))
+
                 -int2d(Th)(
                   tau* ((fxfunc* (u1old*dx(v1) + u2old*dy(v1))) + fyfunc*(u1old*dx(v2) + u2old*dy(v2)))
                 )
@@ -143,18 +143,19 @@ func real[int] runSimulation(int n) {
                     )
                   )                
                 + int2d(Th)
-                  ( tau*(dx(q)*(u1old*dx(u1)+u2old*dy(u1)) +
-                    dy(q)*(u1old*dx(u2) + u2old*dy(u2))))
+                  ( tau*(dx(q)*(u1old*dx(u1)) + dy(q)*(u2old*dy(u1)) +
+                    dx(q)*(u1old*dx(u2)) + dy(q)*(u2old*dy(u2))))
+                    
                 + int2d(Th)
                   ( tau*(dx(p)*dx(q) + dy(p)*dy(q))
                 )
-                - int2d(Th)( tau*nu*( dx(q)*(dxx(u1) + dyy(u1))
-                    + dy(q)*(dxx(u2) + dyy(u2)) ))
                 - int2d(Th)(
-                  tau* ((fxfunc*dx(q)) + fyfunc*dy(q))
+                  tau*nu * (dx(q)*(dx(u1) + dy(u1)) + dy(q)*(dxx(u2) + dyy(u2))))
+                - int2d(Th)(
+                  tau* (fxfunc*dx(q) + fyfunc*dy(q))
                 )                  
 
-                //terceira parte (−nu∗lap(v) ∗(u.grad(u) + grad(p) − nu∗lap(u) - f))
+                // terceira parte (−nu∗lap(v) ∗(u.grad(u) + grad(p) − nu∗lap(u) - f))
                 + int2d(Th)((tau) * (
                           (u1DivDt)*nu*( (dxx(v1)+dyy(v1)) + u2DivDt*nu*( (dxx(v2)+dyy(v2)))))
   
@@ -176,18 +177,40 @@ func real[int] runSimulation(int n) {
                   ( tau*nu*nu*((dxx(v1)+dyy(v1))*(dxx(u1)+dyy(u1)) +
                     (dxx(v2)+dyy(v2))*(dxx(u2)+dyy(u2)))
                   )
-                -int2d(Th)(
+                +int2d(Th)(
                   tau* ((fxfunc*nu*(dxx(v1)+dyy(v1)) + fyfunc*nu*(dxx(v2)+dyy(v2))))
                 )
 
-              // Continuidade
-                + int2d(Th)(
-                  delta * (dx(u1) + dy(u2)) * (dx(v1) + dy(v2))
-                )
-
+              //Continuidade
+              + int2d(Th)( delta * (dx(u1)+dy(u2)) * (dx(v1)+dy(v2)) )
                 // BCs MMS: Dirichlet exatas em toda a borda
                 + on(1, 2, u1 = u1exact, u2 = u2exact)
                 ;
+                                  // ===== Equação do Calor (SUPG) =====
+          problem heat(T,theta) =
+              int2d(Th)(
+                  (T/dt)*theta
+              + (u1*dx(T) + u2*dy(T))*theta
+              + kappa*(dx(T)*dx(theta) + dy(T)*dy(theta))
+              )        
+            - int2d(Th)((Told/dt)*theta)
+            - int2d(Th)( fTfunc * theta )
+
+
+            // // == Estabilização ==
+            // // Primeira parte (u*grad(theta)* (dT_t + u*gradT - kappa*lapT - fT )
+            + int2d(Th)(tauT*((u1*dx(theta) + u2*dy(theta))* (TDivDT - ToldDivDt)))
+            + int2d(Th)(tauT*((u1*dx(theta))*(u1*dx(T)+u2*dy(T)) + (u2*dy(theta))*(u1*dx(T)+u2*dy(T))))
+            - int2d(Th)(tauT*kappa*((u1*dx(theta) + u2*dy(theta))*(dxx(T) + dyy(T))))
+            - int2d(Th)(tauT * fTfunc*(u1*dx(theta) + u2*dy(theta)))
+
+            // Segunda parte (kappa*lap(theta)* (dT_t + u*gradT - kappa*lapT - fT )
+            + int2d(Th)(tauT*kappa*((dxx(theta) + dyy(theta))* (TDivDT - ToldDivDt)))
+
+            + int2d(Th)(tauT*kappa*((dxx(theta) + dyy(theta))*dx(T) + (dxx(theta) + dyy(theta))*dy(T)))
+            - int2d(Th)(tauT*kappa*kappa*((dxx(theta) + dyy(theta))*(dxx(T) + dyy(T))))
+            - int2d(Th)(tauT * kappa* fTfunc*(dxx(theta) + dyy(theta)))      
+            + on(1,2,T=Texact);
 
   
         // ===== Navier–Stokes com GLS EXPANDIDO =====
@@ -195,44 +218,26 @@ func real[int] runSimulation(int n) {
             cout << "   Picard it = " << it << endl;
             NSE;        
 
-
             // atualiza para próximo passo
             u1old = u1; u2old = u2;
+
+            heat;
+            Told = T;
         }
 
-                  // ===== Equação do Calor (SUPG) =====
-        solve heat(T,theta) =
-            int2d(Th)(
-                (T/dt)*theta
-            + (u1*dx(T) + u2*dy(T))*theta
-            + kappa*(dx(T)*dx(theta) + dy(T)*dy(theta))
-            )        
-          - int2d(Th)((Told/dt)*theta)
 
-          // == Estabilização ==
-          // Primeira parte (u*grad(theta)* (dT_t + u*gradT - kappa*lapT - fT )
-          + int2d(Th)(tauT*((u1*dx(theta) + u2*dy(theta))* (TDivDT)))
-          - int2d(Th)(tauT*((u1*dx(theta) + u2*dy(theta))* (ToldDivDt)))
-          + int2d(Th)(tauT*((u1*dx(theta)*u1*dx(T) + u2*dy(theta)*u2*dy(T))))
-          - int2d(Th)(tauT*kappa*((u1*dx(theta) + u2*dy(theta))*(dxx(T) + dyy(T))))
-          - int2d(Th)(tauT * fTfunc*(u1*dx(theta) + u2*dy(theta)))
+      // plot ([u1,u2], fill=1, wait=0);
+      // plot (p, fill=1, wait = 0);
+      // plot (T, fill=1, wait = 0);
 
-          // Segunda parte (kappa*lap(theta)* (dT_t + u*gradT - kappa*lapT - fT )
-          + int2d(Th)(tauT*kappa*((dxx(theta) + dyy(theta))* (TDivDT)))
-          - int2d(Th)(tauT*kappa*((dxx(theta) + dyy(theta))* (ToldDivDt)))
-          + int2d(Th)(tauT*kappa*((dxx(theta) + dyy(theta))*dx(T) + (dxx(theta) + dyy(theta))*dy(T)))
-          - int2d(Th)(tauT*kappa*kappa*((dxx(theta) + dyy(theta))*(dxx(T) + dyy(T))))
-          - int2d(Th)(tauT * kappa* fTfunc*(dxx(theta) + dyy(theta)))      
-          + on(1,2,T=Texact);
-
-        Told = T;
-
-      //plot ([u1,u2], fill=1, wait=0);
-    
         
     }
 
-    // ===== Erros finais =====
+
+    // real gradpL2 = sqrt(int2d(Th)( dx(p)^2 + dy(p)^2 ));
+    // cout << "POST pmean="<<pmean<<" pL2="<<sqrt(int2d(Th)(p^2))<<" gradpL2="<<gradpL2<<endl;
+    // cout << "meanTau="<< (int2d(Th)(tau)/int2d(Th)(1.0)) <<" meanDelta="<< (int2d(Th)(delta)/int2d(Th)(1.0)) << endl;
+
 
       // --- Cálculo das Normas L2 ---
       // A forma como você calculou a norma L2 para cada componente está correta.
@@ -251,21 +256,26 @@ func real[int] runSimulation(int n) {
       // para calcular o termo de derivada da norma H1.
       Vh eu1 = u1 - u1exact;
       Vh eu2 = u2 - u2exact;
+      Vh eu = sqrt(eu1^2 + eu2^2);
       Vh epV = p - pexact;
       Vh eT = T - Texact;
 
       // A norma H1 de um vetor é a soma do L2 do vetor com o L2 de seu gradiente.
-      // Aqui está a forma correta de calcular o gradiente do vetor de erro.
-      real H1uTotal = sqrt( int2d(Th)(eu1^2 + eu2^2 + dx(eu1)^2 + dy(eu1)^2 + dx(eu2)^2 + dy(eu2)^2) );
+
+      real H1uTotal = sqrt(int2d(Th)(eu1^2 + eu2^2 + dx(eu1)^2 + dy(eu1)^2 + dx(eu2)^2 + dy(eu2)^2));
 
       // A norma H1 da pressão é a soma do L2 da pressão com o L2 de seu gradiente.
-      // A projeção de p em Vh já foi feita, agora é só calcular.
-      real H1pNorm = sqrt( int2d(Th)(epV^2 + dx(epV)^2 + dy(epV)^2) );
+ 
+      real H1pNorm = sqrt( int2d(Th)( epV^2 + dx(epV)^2 + dy(epV)^2 ) );
 
       // A norma H1 da temperatura.
-      real H1TNorm = sqrt( int2d(Th)(eT^2 + dx(eT)^2 + dy(eT)^2) );
+      real H1TNorm = sqrt( int2d(Th)( (eT)^2 + dx(eT)^2 + dy(eT)^2 ) );
 
-      // Ajuste no array de retorno para coincidir com os nomes de variáveis
+      real meanTauT = int2d(Th)(tauT)/int2d(Th)(1.0);
+      real gradErrL2 = sqrt(int2d(Th)( dx(eT)^2 + dy(eT)^2 ));
+      cout << "meanTauT="<<meanTauT<<" gradErrL2="<<gradErrL2<<endl;
+
+
       real[int] erros(6);
       erros[0] = L2u;
       erros[1] = H1uTotal;
@@ -274,11 +284,16 @@ func real[int] runSimulation(int n) {
       erros[4] = L2T;
       erros[5] = H1TNorm;
 
+      cout << "DEBUG n="<< n <<" h="<< 1.0/n 
+          << " L2u="<<L2u << " L2u1="<<L2u1 << " L2u2="<<L2u2
+          << " H1u="<<H1uTotal
+          << " L2p="<<L2p << " H1p="<<H1pNorm
+          << " L2T="<<L2T << " H1T="<<H1TNorm << endl;
       return erros;
-  }
+}
 
-  // ===== Convergência + CSV (igual ao seu) =====
-    int[int] Ns = [8, 16, 32, 64, 128];
+  // ===== Convergência + CSV =====
+    int[int] Ns = [8, 16, 32, 64];
     real[int] hs(Ns.n);
     real[int] L2u(Ns.n), H1u(Ns.n), L2p(Ns.n), H1p(Ns.n), L2T(Ns.n), H1T(Ns.n);
     real[int] ordemL2u(Ns.n), ordemH1u(Ns.n), ordemL2p(Ns.n), ordemH1p(Ns.n), ordemL2T(Ns.n), ordemH1T(Ns.n);

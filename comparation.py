@@ -5,9 +5,9 @@ from scipy.interpolate import interp1d
 # === 1. Carrega dados do FreeFEM ===
 # Assuma que você salvou os perfis previamente com esse nome
 # u ao longo de y no centro vertical (x = 0.5)
-freefem_y, freefem_u1 = np.loadtxt("D:/Documentos/Permanent-heat-conduction/Petrov-Galerkin-Method/perfil_u1_x05_Re1000.txt", unpack=True)
+freefem_y, freefem_u1 = np.loadtxt("G:/Drives compartilhados/IC-Felipe/perfil_u1_x05_Re100.txt", unpack=True)
 # v ao longo de x no centro horizontal (y = 0.5)
-freefem_x, freefem_u2 = np.loadtxt("D:/Documentos/Permanent-heat-conduction/Petrov-Galerkin-Method/perfil_u2_y05_Re1000.txt", unpack=True)
+freefem_x, freefem_u2 = np.loadtxt("G:/Drives compartilhados/IC-Felipe/perfil_u2_y05_Re100.txt", unpack=True)
 
 # === 2. Dados brutos de Ghia et al. (1982) ===
 
@@ -27,21 +27,21 @@ freefem_x, freefem_u2 = np.loadtxt("D:/Documentos/Permanent-heat-conduction/Petr
 #                       -0.24533, 0.05454, 0.17527, 0.17507, 0.16077, 0.12317, 0.10890, 0.10091,
 #                       0.09233,  0.0000])
 
-# # u(x=0.5, y) Re = 400
-# ghia_y_u1 = np.array([1.0000, 0.9766, 0.9688, 0.9609, 0.9531, 0.8516, 0.7344,
-#                      0.6172, 0.5000, 0.4531, 0.2813, 0.1719, 0.1016, 0.0703,
-#                      0.0625, 0.0547, 0.0000])
-# ghia_u1    = np.array([1.00000, 0.75837, 0.68439, 0.61756, 0.55892, 0.29093, 0.16256 ,
-#                       0.02135, -0.11477, -0.17119, -0.32726, -0.24299, -0.14612, -0.10338,
-#                       -0.09266, -0.08186, 0.00000])
+# u(x=0.5, y) Re = 400
+ghia_y_u1 = np.array([1.0000, 0.9766, 0.9688, 0.9609, 0.9531, 0.8516, 0.7344,
+                     0.6172, 0.5000, 0.4531, 0.2813, 0.1719, 0.1016, 0.0703,
+                     0.0625, 0.0547, 0.0000])
+ghia_u1    = np.array([1.00000, 0.75837, 0.68439, 0.61756, 0.55892, 0.29093, 0.16256 ,
+                      0.02135, -0.11477, -0.17119, -0.32726, -0.24299, -0.14612, -0.10338,
+                      -0.09266, -0.08186, 0.00000])
 
-# # v(x, y=0.5)
-# ghia_x_u2 = np.array([1.0000, 0.9688, 0.9609, 0.9531, 0.9453, 0.9063, 0.8594,
-#                      0.8047, 0.5000, 0.2344, 0.2266, 0.1563, 0.0938, 0.0781,
-#                      0.0703, 0.0625, 0.0000])
-# ghia_u2    = np.array([0.0000, -0.12146, -0.15663, -0.19254, -0.22847, -0.23827, -0.44993,
-#                       -0.38598, 0.05186, 0.30174, 0.30203, 0.28124, 0.22965, 0.20920, 0.19713,
-#                       0.18360,  0.0000])
+# v(x, y=0.5)
+ghia_x_u2 = np.array([1.0000, 0.9688, 0.9609, 0.9531, 0.9453, 0.9063, 0.8594,
+                     0.8047, 0.5000, 0.2344, 0.2266, 0.1563, 0.0938, 0.0781,
+                     0.0703, 0.0625, 0.0000])
+ghia_u2    = np.array([0.0000, -0.12146, -0.15663, -0.19254, -0.22847, -0.23827, -0.44993,
+                      -0.38598, 0.05186, 0.30174, 0.30203, 0.28124, 0.22965, 0.20920, 0.19713,
+                      0.18360,  0.0000])
 
 #u(x=0.5, y) Re = 1000
 ghia_y_u1 = np.array([1.0000, 0.9766, 0.9688, 0.9609, 0.9531, 0.8516, 0.7344,
