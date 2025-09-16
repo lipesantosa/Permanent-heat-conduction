@@ -12,7 +12,7 @@ The simulated domain is a unit square cavity with boundary conditions for zero v
 
 ## Mathematical Model
 ### Incompressible Navier-Stokes System
-$\left( \frac{\partial \mathbf{u}}{\partial t} + \mathbf{u} \cdot \nabla \mathbf{u} \right) - \nabla \cdot (\nu \nabla \mathbf{u}) + \nabla p = \mathbf{f}$ \
+$\left( \frac{\partial \mathbf{u}}{\partial t} + \mathbf{u} \cdot \nabla \mathbf{u} \right) - \nabla \cdot (\nu \nabla \mathbf{u}) + \nabla p = \mathbf{F}$ 
 
 $\nabla \cdot \mathbf{u} = 0$
 
