@@ -14,7 +14,7 @@ The simulated domain is a unit square cavity with boundary conditions for zero v
 ### Incompressible Navier-Stokes System
 $\left( \frac{\partial \mathbf{u}}{\partial t} + \mathbf{u} \cdot \nabla \mathbf{u} \right) - \nabla \cdot (\nu \nabla \mathbf{u}) + \nabla p = \mathbf{F}$ 
 
-$\hspace{6cm} \nabla \cdot \mathbf{u} = 0$
+$\hspace{5.1cm} \nabla \cdot \mathbf{u} = 0$
 
 ### Convection-Diffusion Equation for Temperature
 $\frac{\partial T}{\partial t} + \mathbf{u} \cdot \nabla T - \nabla \cdot (\kappa \nabla T) = Q$
