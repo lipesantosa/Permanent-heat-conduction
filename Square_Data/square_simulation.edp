@@ -65,96 +65,10 @@ for (t = 0; t <= tmax; t += dt) {
                     - 1e-6*p*q
                   )
                 - int2d(Th)((1.0/dt)*(u1old*v1 + u2old*v2))
-                // primeira parte (u.grad(v) ∗ (du_t + u.grad(u) + grad(p) − nu∗lap(u) - f))
-                + int2d(Th)((tau) * (
-                          (u1DivDt)*u1old*dx(v1) + u2DivDt*u2old*dy(v1)
-                        + u1DivDt*u1old*dx(v2) + u2DivDt*u2old*dy(v2)
-                    ))
-                - int2d(Th)(
-                    (tau) * (
-                          u1oldDivDt*u1old*dx(v1) + u2oldDivDt*u2old*dy(v1)
-                        + u1oldDivDt*u1old*dx(v2) + u2oldDivDt*u2old*dy(v2)
-                    )
-                  )
-                + int2d(Th)
-                  ( tau*(( u1old*dx(u1)*u1old*dx(v1)) +
-                    ( u1old*dx(u1)*u2old*dy(v1)) +
-                    ( u2old*dy(u1)*u1old*dx(v1)) +
-                    ( u2old*dy(u1)*u2old*dy(v1)) +
-                    ( u1old*dx(u2)*u1old*dx(v2)) +
-                    ( u1old*dx(u2)*u2old*dy(v2)) +
-                    ( u2old*dy(u2)*u1old*dx(v2)) +
-                    ( u2old*dy(u2)*u2old*dy(v2)) )
-                  )
-                + int2d(Th)
-                  ( tau*(dx(p)*(u1old*dx(v1)+u2old*dy(v1)) +
-                    dy(p)*(u1old*dx(v2) + u2old*dy(v2)))
-                  )
-                - int2d(Th)
-                  ( tau*nu*( (dxx(u1)+dyy(u1))*( u1old*dx(v1)+u2old*dy(v1)) +
-                    (dxx(u2)+dyy(u2))*( u1old*dx(v2) + u2old*dy(v2)))
-                  )
-                -int2d(Th)(
-                  tau* ((fxfunc* (u1old*dx(v1) + u2old*dy(v1))) + fyfunc*(u1old*dx(v2) + u2old*dy(v2)))
-                )
-
-                //segunda parte (grad(q) ∗ (du_t + u.grad(u) + grad(p) −nu∗lap(u) - f))              
-                + int2d(Th)((tau) * (
-                          (u1DivDt)*dx(q) + u2DivDt*dy(q)
-                    ))
-                - int2d(Th)(
-                    (tau) * (
-                          u1oldDivDt*dx(q) + u2oldDivDt*dy(q)
-                    )
-                  )                
-                + int2d(Th)
-                  ( tau*(dx(q)*(u1old*dx(u1)+u2old*dy(u1)) +
-                    dy(q)*(u1old*dx(u2) + u2old*dy(u2))))
-                + int2d(Th)
-                  ( tau*(dx(p)*dx(q) + dy(p)*dy(q))
-                )
-                - int2d(Th)( tau*nu*( dx(q)*(dxx(u1) + dyy(u1))
-                    + dy(q)*(dxx(u2) + dyy(u2)) ))
-                - int2d(Th)(
-                  tau* ((fxfunc*dx(q)) + fyfunc*dy(q))
-                )                  
-
-                //terceira parte (−nu∗lap(v) ∗(u.grad(u) + grad(p) − nu∗lap(u) - f))
-                + int2d(Th)((tau) * (
-                          (u1DivDt)*nu*( (dxx(v1)+dyy(v1)) + u2DivDt*nu*( (dxx(v2)+dyy(v2)))))
-  
-                    )
-                - int2d(Th)(
-                    (tau) * (
-                          u1oldDivDt*nu*( (dxx(v1)+dyy(v1))) + u2oldDivDt*nu*( (dxx(v2)+dyy(v2)))
-                    )
-                  )                
-                - int2d(Th)
-                  ( tau*nu*( (dxx(v1)+dyy(v1))*( u1old*dx(u1)+u2old*dy(u1)) +
-                    (dxx(v2)+dyy(v2))*( u1old*dx(u2)+u2old*dy(u2)))
-                  )
-                - int2d(Th)
-                  ( tau*nu*( (dxx(v1)+dyy(v1))*(dx(p)) +
-                    (dxx(v2)+dyy(v2))*(dy(p)))
-                  )
-                + int2d(Th)
-                  ( tau*nu*nu*((dxx(v1)+dyy(v1))*(dxx(u1)+dyy(u1)) +
-                    (dxx(v2)+dyy(v2))*(dxx(u2)+dyy(u2)))
-                  )
-                -int2d(Th)(
-                  tau* ((fxfunc*nu*(dxx(v1)+dyy(v1)) + fyfunc*nu*(dxx(v2)+dyy(v2))))
-                )
-
-              // Continuidade
-                + int2d(Th)(
-                  delta * ( dx(u1)*dx(v1) + dx(u1)*dy(v2) + dx(u2)*dx(v1) + dx(u2)*dy(v2) )
-                )
-
-                // BCs MMS: Dirichlet exatas em toda a borda
-                + on(1, 2, u1 = u1exact, u2 = u2exact)
+                - int2d(Th)(fx*v1 + fy*v2)
+                + on(2, u=0, u2=0)
+                + on(1, u1 = 1, u2 = 0)
                 ;
-
-
   
         // ===== Navier–Stokes com GLS EXPANDIDO =====
         for (int it=0; it<itmax; ++it) {
@@ -183,7 +97,7 @@ for (t = 0; t <= tmax; t += dt) {
     P1h pp = p;
     P1h Tp = T;
 
-savevtk("results100_t"+t+".vtu", Th, [u1, u2], p, T, dataname = "velocity pressure temperature");
+// savevtk("results100_t"+t+".vtu", Th, [u1, u2], p, T, dataname = "velocity pressure temperature");
 //savevtk("results400_t"+t+".vtu", Th, [u1, u2], p, T, dataname = "velocity pression temperature");
 //savevtk("results1000_t"+t+".vtu", Th, [u1, u2], p, T, dataname = "velocity pression temperature");
 

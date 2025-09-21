@@ -1,217 +1,326 @@
-// Libraries
+// ============================================================
+// NS + CALOR (GLS expandido + SUPG) com MMS consistente
+// u = (π cos(πy) sin(πx), -π cos(πx) sin(πy))
+// p = cos(πx) cos(πy)   [nível corrigido para média zero]
+// T = sin(πx) sin(πy)
+// f_NS = (u·∇)u + ∇p - ν Δu
+// f_T  = u·∇T - κ ΔT
+// ============================================================
+
 load "iovtk"
 
-// Malha
-border a1(t=0,1){x=t; y=0; label=2;}
-border a2(t=0,1){x=1; y=t; label=2;}
-border a3(t=0,1){x=1-t; y=1; label=1;}
-border a4(t=0,1){x=0; y=1-t; label=2;}
-int n = 129;
-mesh Th = buildmesh(a1(n)+a2(n)+a3(n)+a4(n));
+func real[int] runSimulation(int n) {
 
-// Despaces
-fespace Vh(Th, P1);
-fespace Qh(Th, P1);
-fespace ThT(Th, P1);
+    // ---- Malha ----
+      border a1(t=0,1){x=t; y=0; label=2;}
+      border a2(t=0,1){x=1; y=t; label=2;}
+      border a3(t=0,1){x=1-t; y=1; label=1;}
+      border a4(t=0,1){x=0; y=1-t; label=2;}
+      mesh Th = buildmesh(a1(n)+a2(n)+a3(n)+a4(n));
 
-Vh u1, u2, u1old, u2old, v1, v2, ht;
-Qh p, q;
-Vh du1, du2;
-ThT T, Told, theta, dTn, Pe;
+    // ---- Espaços ----
+      fespace Vh(Th, P2);
+      fespace Qh(Th, P1);
+      fespace ThT(Th, P1);
+      fespace Ht(Th, P0);
 
-// Parameters
-real Re = 100;          // Reynolds Number
-real nu = 1.0 / Re;     // Viscosity
-real dt = 0.1;          // Time step
-int nmax = 50;          // Time its
-int itmax = 20;         // Picard its
-real kappa = 0.01;      // Thermic conduction  
+      Vh u1, u2, u1old, u2old, v1, v2, ReTest;
+      Qh p, q;
+      Vh du1, du2;
+      ThT T, Told, theta, dTn, Pe;
+      Ht ht;
 
-// Macros
-macro umod() sqrt(u1old^2 + u2old^2) //
-ht = hTriangle;
-macro tau() (1.0e-4 / sqrt((2/dt)^2 + (2.0 * umod / ht)^2 + (4.0 * nu / (ht^2))^2)) //
+    // ---- Parâmetros ----
+      real Re = 400;      // Reynolds
+      real nu = 1.0/Re;   // Viscosidade
+      real dt = 1e-3;     // Passo de tempo
+      int  nmax = 5;     // Passos de tempo
+      int  itmax = 20;    // Iterações de Picard
+      real kappa = 0.01;  // Condutividade
+      real pi = acos(-1);
 
-macro Peclet() max(1e-8, 1/3 * umod * ht / (2*kappa)) //
-macro tauT() ht^2/(2*Peclet*kappa) * sqrt(Peclet^2/(36 + Peclet^2))  //
+    // ---- Solução exata (MMS) ----
+    Vh u1exactFunc = pi*cos(pi*y)*sin(pi*x) * sin(1*dt);
+    Vh u2exactFunc = -pi*cos(pi*x)*sin(pi*y) * sin(1*dt);
+    Qh pexactFunc = cos(pi*x)*cos(pi*y) * cos(1*dt);  
+    ThT TexactFunc = sin(pi*x)*sin(pi*y) * sin(1*dt); 
+    func du1dt = pi*cos(pi*y)*sin(pi*x) * (1*cos(1*dt));
+    func du2dt = -pi*cos(pi*x)*sin(pi*y) * (1*cos(1*dt));
+
+    // ---- Inicialização no estado exato ----
+    u1old = u1exactFunc;
+    u2old = u2exactFunc;
+    Told  = TexactFunc;
+
+    // ---- Estabilização ----
+    real lambda = 0.5;      // para o termo de divergência
+
+    // macros 
+      macro ht()      hTriangle //
+      macro umod() sqrt(u1old^2 + u2old^2) //
+      macro Pe()     ((1./12)*umod*ht/(2.0*(1./kappa))) //
+      macro ReK()   (((1./12)*umod*ht)/(4*(1./nu))) //
+      macro xi(pe)   ( ((pe) < 1.0 ? (pe) : 1.0 )) //
+      macro tau()  ( (ht/(2*umod) * xi(ReK))) //
+      // macro tau() (1.0e-4 / (sqrt ((2/dt)^2 + (2.0*umod/ht)^2 + (4.0*nu/ht^2)^2))) //
+      macro tauT() ( ht/(2*umod) * xi(Pe)) //
+      // macro tauT()  (((1./12) * ht^2)/(4*kappa)) //
+      macro delta() ( lambda * ht*xi(ReK) ) //
+
+    // Projeta solução exata
+    Vh u1exact = u1exactFunc;
+    Vh u2exact = u2exactFunc;
+    Qh pexact  = pexactFunc;
+    ThT Texact = TexactFunc;
+
+    // Termos-fonte consistentes
+    // então calcule fxfunc/fyfunc com termo temporal
+    func fxfunc = du1dt + (u1exact*dx(u1exact) + u2exact*dy(u1exact)) + dx(pexact)
+                - nu*(dxx(u1exact) + dyy(u1exact));
+    func fyfunc = du2dt + (u1exact*dx(u2exact) + u2exact*dy(u2exact)) + dy(pexact)
+                - nu*(dxx(u2exact) + dyy(u2exact));
+      func fTfunc = (u1exact*dx(Texact) + u2exact*dy(Texact))
+                  - kappa*(dxx(Texact) + dyy(Texact));
+    // auxiliares (u/dt)
+    Vh u1DivDt = u1/dt, u2DivDt = u2/dt;
+    Vh u1oldDivDt = u1old/dt, u2oldDivDt = u2old/dt;
+    ThT TDivDT = T/dt, ToldDivDt = Told/dt;
+
+    // ---- Loop no tempo ----
+    for (int nTimeStep = 0; nTimeStep < nmax; ++nTimeStep) {
+        cout << "\n>>> Passo = " << nTimeStep << ", t = " << nTimeStep*dt << ", n = " << n << endl;
+
+          problem NSE([u1, u2, p], [v1, v2, q]) =
+                  int2d(Th)(
+                      // Galerkin padrão
+                      (1.0/dt)*(u1*v1 + u2*v2)
+                    + nu*(dx(u1)*dx(v1) + dy(u1)*dy(v1) + dx(u2)*dx(v2) + dy(u2)*dy(v2))
+                    + u1old*dx(u1)*v1 + u2old*dy(u1)*v1
+                    + u1old*dx(u2)*v2 + u2old*dy(u2)*v2
+                    - p*(dx(v1) + dy(v2))
+                    - q*(dx(u1) + dy(u2))
+                    - 1e-6*p*q
+                  )
+                - int2d(Th)((1.0/dt)*(u1old*v1 + u2old*v2))
+                - int2d(Th)( fxfunc * v1 + fyfunc * v2 )
+                // primeira parte (u.grad(v) ∗ (du_t + u.grad(u) + grad(p) − nu∗lap(u) - f))
+                + int2d(Th)((tau) * (
+                          (u1DivDt)*u1old*dx(v1) + u2DivDt*u2old*dy(v1)
+                        + u1DivDt*u1old*dx(v2) + u2DivDt*u2old*dy(v2)
+                    ))
+                - int2d(Th)(
+                    (tau) * (
+                          u1oldDivDt*u1old*dx(v1) + u2oldDivDt*u2old*dy(v1)
+                        + u1oldDivDt*u1old*dx(v2) + u2oldDivDt*u2old*dy(v2)
+                    )
+                  )
+                + int2d(Th)
+                  ( (tau) * (u1old*dx(v1) + u2old*dy(v1))*(u1old*dx(u1)+u2old*dy(u1)) + 
+                  (u1old*dx(v2) + u2old*dy(v2))*(u1old*dx(u2)+u2old*dy(u2)))
+                
+                + int2d(Th)
+                  ( tau*(dx(p)*(u1old*dx(v1)) + dy(p)*(u1old*dy(v1)) +
+                    dx(p)*(u2old*dx(v2)) + dy(p)*(u2old*dy(v2))))
+                - int2d(Th)(
+                  (tau)*nu * ((dxx(u1) + dyy(u1)) * (u1old*(dx(v1)+dy(v1)) + u2old*(dx(v2) + dy(v2)))
+                  + (dxx(u2) + dyy(u2)) * (u1old*(dx(v1)+dy(v1)) + u2old*(dx(v2) + dy(v2)))))
+
+                -int2d(Th)(
+                  tau* ((fxfunc* (u1old*dx(v1) + u2old*dx(v1))) + fyfunc*(u1old*dy(v2) + u2old*dy(v2)))
+                )
+
+                //segunda parte (grad(q) ∗ (du_t + u.grad(u) + grad(p) −nu∗lap(u) - f))              
+                + int2d(Th)((tau) * (
+                          (u1DivDt)*dx(q) + u2DivDt*dy(q)
+                    ))
+                - int2d(Th)(
+                    (tau) * (
+                          u1oldDivDt*dx(q) + u2oldDivDt*dy(q)
+                    )
+                  )                
+                + int2d(Th)
+                  ( tau*(dx(q)*(u1old*dx(u1)) + dy(q)*(u1old*dy(u1)) +
+                    dx(q)*(u2old*dx(u2)) + dy(q)*(u2old*dy(u2))))
+                    
+                + int2d(Th)
+                  ( tau*(dx(p)*dx(q) + dy(p)*dy(q))
+                )
+                - int2d(Th)(
+                  tau*nu * (dx(q)*(dxx(u1) + dyy(u1)) + dy(q)*(dxx(u2) + dyy(u2))))
+                - int2d(Th)(
+                  tau* (fxfunc*dx(q) + fyfunc*dy(q))
+                )                  
+
+                // terceira parte (−nu∗lap(v) ∗(u.grad(u) + grad(p) − nu∗lap(u) - f))
+                - int2d(Th)((tau) * (
+                          (u1DivDt)*nu*( (dxx(v1)+dyy(v1)) + u2DivDt*nu*( (dxx(v2)+dyy(v2)))))
+  
+                    )
+                + int2d(Th)(
+                    (tau) * (
+                          u1oldDivDt*nu*( (dxx(v1)+dyy(v1))) + u2oldDivDt*nu*( (dxx(v2)+dyy(v2)))
+                    )
+                  )                
+                - int2d(Th)
+                  ( tau*nu*( (dxx(v1)+dyy(v1))*( u1old*dx(u1)+u1old*dy(u1)) +
+                    (dxx(v2)+dyy(v2))*( u2old*dx(u2)+u2old*dy(u2)))
+                  )
+                - int2d(Th)
+                  ( tau*nu*( (dxx(v1)+dyy(v1))*(dx(p)) +
+                    (dxx(v2)+dyy(v2))*(dy(p)))
+                  )
+                + int2d(Th)
+                  ( tau*nu*nu*((dxx(v1)+dyy(v1))*(dxx(u1)+dyy(u1)) +
+                    (dxx(v2)+dyy(v2))*(dxx(u2)+dyy(u2)))
+                  )
+                +int2d(Th)(
+                  tau* ((fxfunc*nu*(dxx(v1)+dyy(v1)) + fyfunc*nu*(dxx(v2)+dyy(v2))))
+                )
+
+              //Continuidade
+              + int2d(Th)( delta * (dx(u1)+dy(u2)) * (dx(v1)+dy(v2)) )
+                // BCs MMS: Dirichlet exatas em toda a borda
+              + on(1,2, u1 = u1exactFunc, u2 = u2exactFunc)
+                ;
+
+            // ===== Navier–Stokes com GLS EXPANDIDO =====
+            for (int it=0; it<itmax; ++it) {
+                cout << "   Picard it = " << it << endl;
+                NSE;        
+
+                // atualiza para próximo passo
+                u1old = u1; u2old = u2;
+
+        
+            }
+            real area = int2d(Th)(1.0);
+            real pmean = int2d(Th)(p)/area;
+            p[] -= pmean;
+
+            real pexactmean = int2d(Th)(pexact)/area;
+            pexact[] -= pexactmean;
+
+          // ===== Equação do Calor (SUPG) =====
+          solve heat(T,theta) =
+              int2d(Th)(
+                  (T/dt)*theta
+              + (u1*dx(T) + u2*dy(T))*theta
+              + kappa*(dx(T)*dx(theta) + dy(T)*dy(theta))
+              )        
+            - int2d(Th)((Told/dt)*theta)
+            - int2d(Th)( fTfunc * theta )
 
 
-// Inicialization
-u1old = 0; u2old = 0;
-Told = 0;
-func fx = 0;
-func fy = 0;
-
-//  Stokes for u initial
-solve stokes([u1, u2, p], [v1, v2, q]) =
-    int2d(Th)(
-        nu * (dx(u1) * dx(v1) + dy(u1) * dy(v1) +
-            dx(u2) * dx(v2) + dy(u2) * dy(v2))
-        - p * q * 1e-6
-        - p * (dx(v1) + dy(v2)) - q * (dx(u1) + dy(u2))
-    )
-    - int1d(Th)(p / nu * v1)
-    + on(2, u1 = 0, u2 = 0)
-    + on(1, u1 = 1, u2 = 0);
-
-u1old = u1;
-u2old = u2;
-
-// Time loop
-for (int n = 0; n < nmax; ++n) {
-    cout << "\n>>> Tempo t = " << n*dt << endl;
-
-    // Picard Iterations
-    for (int it = 0; it < itmax; ++it) {
-        cout << "  Iteracao Picard = " << it << endl;
-
-        problem NSE([u1, u2, p], [v1, v2, q]) =
-            int2d(Th)(
-                (1.0/dt)*(u1 * v1 + u2 * v2)
-              + nu * (dx(u1)*dx(v1) + dy(u1)*dy(v1) + dx(u2)*dx(v2) + dy(u2)*dy(v2))
-              + u1old * dx(u1) * v1 + u2old * dy(u1) * v1
-              + u1old * dx(u2) * v2 + u2old * dy(u2) * v2
-              - p * q * 1e-6
-              - p * (dx(v1) + dy(v2))
-              - q * (dx(u1) + dy(u2))
-            )
+            // // == Estabilização ==
+            // // Primeira parte (u*grad(theta)* (dT_t + u*gradT - kappa*lapT - fT )
+            + int2d(Th)(tauT*((u1*dx(theta) + u2*dy(theta))* (TDivDT - ToldDivDt)))
+            + int2d(Th)
+                  ( (tauT) * (( u1*dx(theta) + u2*dy(theta)) * ( u1*dx(T) + u2*dy(T))))
             - int2d(Th)(
-                (1.0/dt)*(u1old * v1 + u2old * v2)
-            )
-            - int2d(Th)(fx*v1 + fy*v2)
-            // GLS: part 1 
-            + int2d(Th)(
-                tau * (
-                    ((u1)/dt) * u1old * dx(v1) +
-                    ((u2)/dt) * u2old * dy(v1) +
-                    ((u1)/dt) * u1old * dx(v2) +
-                    ((u2)/dt) * u2old * dy(v2)
-                )
-            )
-            - int2d(Th)(
-                tau * (
-                    (u1old/dt) * u1old * dx(v1) +
-                    (u2old/dt) * u2old * dy(v1) +
-                    (u1old/dt) * u1old * dx(v2) +
-                    (u2old/dt) * u2old * dy(v2)
-                )
-            )
+                  (tauT)*kappa * ((u1*dx(theta) + u2*dy(theta)) * ( dxx(T) + dyy(T) )))
+                
+            - int2d(Th)(tauT * fTfunc*(u1*dx(theta) + u2*dy(theta)))
 
-            + int2d(Th)(
-                tau * (
-                    (u1old * dx(u1) + u2old * dy(u1)) * (u1old * dx(v1) + u2old * dy(v1))
-                + (u1old * dx(u2) + u2old * dy(u2)) * (u1old * dx(v2) + u2old * dy(v2))
-                )
-            )
+            // Segunda parte (kappa*lap(theta)* (dT_t + u*gradT - kappa*lapT - fT )
+            + int2d(Th)(tauT*kappa*((dxx(theta) + dyy(theta))* (TDivDT - ToldDivDt)))
+            + int2d(Th)(tauT*kappa*((dxx(theta) + dyy(theta))*dx(T) + (dxx(theta) + dyy(theta))*dy(T)))
+            - int2d(Th)(tauT*kappa^2*((dxx(theta) + dyy(theta))*(dxx(T) + dyy(T))))
+            - int2d(Th)(tauT * kappa* fTfunc*(dxx(theta) + dyy(theta)))      
+            + on(1, 2, T=Texact);
 
-            + int2d(Th)(
-                tau * (
-                    dx(p) * (u1old * dx(v1) + u2old * dy(v1)) +
-                    dy(p) * (u1old * dx(v2) + u2old * dy(v2))
-                )
-            )
-            - int2d(Th)(
-                tau * nu * (
-                    (dxx(u1)+dyy(u1)) * (u1old * dx(v1) + u2old * dy(v1)) +
-                    (dxx(u2)+dyy(u2)) * (u1old * dx(v2) + u2old * dy(v2))
-                )
-            )
-            // GLS: part 2 
-            + int2d(Th)(
-                tau * (
-                    dx(q)*(u1old*dx(u1) + u2old*dy(u1)) +
-                    dy(q)*(u1old*dx(u2) + u2old*dy(u2))
-                )
-            )
-            + int2d(Th)(tau * (dx(p)*dx(q) + dy(p)*dy(q)))
-            - int2d(Th)(
-                tau * nu * (
-                    dx(q)*(dxx(u1) + dyy(u1)) +
-                    dy(q)*(dxx(u2) + dyy(u2))
-                )
-            )
-            // GLS: part 3 
-            - int2d(Th)(
-                tau * nu * (
-                    (dxx(v1)+dyy(v1))*(u1old*dx(u1) + u2old*dy(u1)) +
-                    (dxx(v2)+dyy(v2))*(u1old*dx(u2) + u2old*dy(u2))
-                )
-            )
-            - int2d(Th)(
-                tau * nu * (
-                    (dxx(v1)+dyy(v1)) * dx(p) +
-                    (dxx(v2)+dyy(v2)) * dy(p)
-                )
-            )
-            + int2d(Th)(
-                tau * nu^2 * (
-                    (dxx(v1)+dyy(v1))*(dxx(u1)+dyy(u1)) +
-                    (dxx(v2)+dyy(v2))*(dxx(u2)+dyy(u2))
-                )
-            )
-            - int1d(Th, 2)(p / nu * v1)
-            + on(2, u1 = 0, u2 = 0)
-            + on(1, u1 = 1, u2 = 0);
+  
 
-        NSE;
+
+
+      plot ([u1,u2], fill=1, wait=0);
+      // plot (p, fill=1, wait = 0);
+      // plot (T, fill=1, wait = 0);
+
+        
     }
 
-    // Atualizaztion
-    du1 = (u1 - u1old)/dt;
-    du2 = (u2 - u2old)/dt;
-    u1old = u1;
-    u2old = u2;
 
-    // Convection-Diffusion Equation
-    dTn = (T - Told)/dt;
-
-    solve heat(T, theta) =
-        int2d(Th)(
-            (T/dt)*theta
-        + (u1*dx(T) + u2*dy(T))*theta
-        + kappa*(dx(T)*dx(theta) + dy(T)*dy(theta))
-        )
-        + int2d(Th)(tauT * (T/dt + u1*dx(T) + u2*dy(T) - kappa*(dxx(T) + dyy(T))) 
-            * (u1*dx(theta) + u2*dy(theta) - kappa*(dxx(theta) + dyy(theta)))
-        )
-    - int2d(Th)(Told/dt * theta)
-    + on(1, T = 50)
-    + on(2, T = 0);
-
-    Told = T;
+    // real gradpL2 = sqrt(int2d(Th)( dx(p)^2 + dy(p)^2 ));
+    // cout << "POST pmean="<<pmean<<" pL2="<<sqrt(int2d(Th)(p^2))<<" gradpL2="<<gradpL2<<endl;
+    // cout << "meanTau="<< (int2d(Th)(tau)/int2d(Th)(1.0)) <<" meanDelta="<< (int2d(Th)(delta)/int2d(Th)(1.0)) << endl;
 
 
-    // Visualization and .vtk save
-    //plot(T, wait = 0, fill = true, value = true, cmm = "Temperature at t=" + n*dt);
-    //plot([u1, u2], wait = 0, fill = true, value = true, cmm = "Velocity at t=" + n*dt);
-    
-    //savevtk("D:/Documentos/Permanent-heat-conduction/Petrov-Galerkin-Method/Data/results100_t="+n*dt+".vtu", Th, [u1, u2], p, T, dataname = "Velocity Pressure Temperature");
+      // --- Cálculo das Normas L2 ---
+      // A forma como você calculou a norma L2 para cada componente está correta.
+      real L2u1 = sqrt(int2d(Th)((u1 - u1exact)^2));
+      real L2u2 = sqrt(int2d(Th)((u2 - u2exact)^2));
+      real L2p = sqrt(int2d(Th)((p - pexact)^2));
+      real L2T = sqrt(int2d(Th)((T - Texact)^2));
+
+      // Norma L2 total do vetor velocidade (u)
+      real L2u = sqrt(L2u1^2 + L2u2^2);
+
+      // --- Cálculo das Normas H1 ---
+
+      Vh eu1 = u1 - u1exact;
+      Vh eu2 = u2 - u2exact;
+      Vh eu = sqrt(eu1^2 + eu2^2);
+      Vh epV = p - pexact;
+      Vh eT = T - Texact;
+
+
+      real H1uTotal = sqrt(int2d(Th)(eu1^2 + eu2^2 + dx(eu1)^2 + dy(eu1)^2 + dx(eu2)^2 + dy(eu2)^2));
+
+      real H1pNorm = sqrt( int2d(Th)( epV^2 + dx(epV)^2 + dy(epV)^2 ) );
+
+      real H1TNorm = sqrt( int2d(Th)( (eT)^2 + dx(eT)^2 + dy(eT)^2 ) );
+
+      real meanTauT = int2d(Th)(tauT)/int2d(Th)(1.0);
+      real gradErrL2 = sqrt(int2d(Th)( dx(eT)^2 + dy(eT)^2 ));
+      cout << "meanTauT="<<meanTauT<<" gradErrL2="<<gradErrL2<<endl;
+
+
+      real[int] erros(6);
+      erros[0] = L2u;
+      erros[1] = H1uTotal;
+      erros[2] = L2p;
+      erros[3] = H1pNorm;
+      erros[4] = L2T;
+      erros[5] = H1TNorm;
+
+      cout << "DEBUG n="<< n <<" h="<< 1.0/n 
+          << " L2u="<<L2u << " L2u1="<<L2u1 << " L2u2="<<L2u2
+          << " H1u="<<H1uTotal
+          << " L2p="<<L2p << " H1p="<<H1pNorm
+          << " L2T="<<L2T << " H1T="<<H1TNorm << endl;
+      return erros;
 }
 
-// Comparation to Ghia: u1 along vertical through Geometric Center of Cavity 
-int npts = 100;
-real[int] uy(npts), y(npts);
+  // ===== Convergência + CSV =====
+    int[int] Ns = [8, 16, 32, 64];
+    real[int] hs(Ns.n);
+    real[int] L2u(Ns.n), H1u(Ns.n), L2p(Ns.n), H1p(Ns.n), L2T(Ns.n), H1T(Ns.n);
+    real[int] ordemL2u(Ns.n), ordemH1u(Ns.n), ordemL2p(Ns.n), ordemH1p(Ns.n), ordemL2T(Ns.n), ordemH1T(Ns.n);
 
-for (int i = 0; i < npts; i++) {
-    y[i] = i*1.0/(npts - 1);     
-    uy[i] = u1(0.5, y[i]);       
-}
+    for (int i=0;i<Ns.n;i++){
+        int n = Ns[i];
+        real h = 1.0/n; hs[i]=h;
+        real[int] e = runSimulation(n);
+        L2u[i]=e[0]; H1u[i]=e[1]; L2p[i]=e[2]; H1p[i]=e[3]; L2T[i]=e[4]; H1T[i]=e[5];
+        if(i==0){ordemL2u[i]=ordemH1u[i]=ordemL2p[i]=ordemH1p[i]=ordemL2T[i]=ordemH1T[i]=0;}
+        else{
+            ordemL2u[i]=log(L2u[i-1]/L2u[i])/log(hs[i-1]/hs[i]);
+            ordemH1u[i]=log(H1u[i-1]/H1u[i])/log(hs[i-1]/hs[i]);
+            ordemL2p[i]=log(L2p[i-1]/L2p[i])/log(hs[i-1]/hs[i]);
+            ordemH1p[i]=log(H1p[i-1]/H1p[i])/log(hs[i-1]/hs[i]);
+            ordemL2T[i]=log(L2T[i-1]/L2T[i])/log(hs[i-1]/hs[i]);
+            ordemH1T[i]=log(H1T[i-1]/H1T[i])/log(hs[i-1]/hs[i]);
+        }
+    }
 
-// Save data to cpmparation
-ofstream fout("perfil_u1_x05_Re100.txt");
-for (int i = 0; i < npts; i++) {
-    fout << y[i] << " " << uy[i] << endl;
-}
-
-// // Comparation to Ghia: u2 along horizontal through Geometric Center of Cavity 
-real[int] vx(npts), x(npts);
-
-for (int i = 0; i < npts; i++) {
-    x[i] = i*1.0/(npts - 1);     
-    vx[i] = u2(x[i], 0.5);      
-}
-
-ofstream fout2("perfil_u2_y05_Re100.txt");
-for (int i = 0; i < npts; i++) {
-    fout2 << x[i] << " " << vx[i] << endl;
-}
+    ofstream fout("tabela_erros.csv");
+    fout << "h,L2u,Ordem_L2u,H1u,Ordem_H1u,L2p,Ordem_L2p,H1p,Ordem_H1p,L2T,Ordem_L2T,H1T,Ordem_H1T\n";
+    for (int i=0;i<Ns.n;i++){
+        fout << hs[i] << ","
+            << L2u[i] << "," << (i==0?"0":ordemL2u[i]) << ","
+            << H1u[i] << "," << (i==0?"0":ordemH1u[i]) << ","
+            << L2p[i] << "," << (i==0?"0":ordemL2p[i]) << ","
+            << H1p[i] << "," << (i==0?"0":ordemH1p[i]) << ","
+            << L2T[i] << "," << (i==0?"0":ordemL2T[i]) << ","
+            << H1T[i] << "," << (i==0?"0":ordemH1T[i]) << "\n";
+    }

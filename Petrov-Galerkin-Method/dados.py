@@ -74,25 +74,24 @@ for col, slope in results.items():
     print(f"{col:>4}: {slope:.3f}")
 
 
-# import numpy as np, pandas as pd
-# csv = r"D:/Documentos/Permanent-heat-conduction/Petrov-Galerkin-Method/tabela_erros.csv"
-# df = pd.read_csv(csv).sort_values('h').reset_index(drop=True)
-# cols = ['L2u','H1u','L2p','H1p','L2T','H1T']
-# for col in cols:
-#     if col not in df.columns: continue
-#     h = df['h'].to_numpy(); err = df[col].to_numpy()
-#     mask = np.isfinite(err) & (err>0)
-#     h = h[mask]; err = err[mask]
-#     print("\n===", col, "===")
-#     for hi, ei in zip(h, err):
-#         print(f"h={hi:.6g}, err={ei:.6g}")
-#     if len(h)<2: continue
-#     # slopes locais
-#     slopes = [np.log(err[i-1]/err[i])/np.log(h[i-1]/h[i]) for i in range(1,len(h))]
-#     print("slopes locais:", np.array(slopes))
-#     # robust fit: remover outlier quando erro cresce > 10x
-#     mask_ok = np.ones_like(err, bool)
-#     for i in range(1,len(err)):
-#         if err[i] > 10*err[i-1]: mask_ok[i]=False
-#     coef = np.polyfit(np.log(h[mask_ok]), np.log(err[mask_ok]), 1)
-#     print("slope fit robust:", coef[0])
+csv = r"D:/Documentos/Permanent-heat-conduction/Petrov-Galerkin-Method/tabela_erros.csv"
+df = pd.read_csv(csv).sort_values('h').reset_index(drop=True)
+cols = ['L2u','H1u','L2p','H1p','L2T','H1T']
+for col in cols:
+    if col not in df.columns: continue
+    h = df['h'].to_numpy(); err = df[col].to_numpy()
+    mask = np.isfinite(err) & (err>0)
+    h = h[mask]; err = err[mask]
+    print("\n===", col, "===")
+    for hi, ei in zip(h, err):
+        print(f"h={hi:.6g}, err={ei:.6g}")
+    if len(h)<2: continue
+    # slopes locais
+    slopes = [np.log(err[i-1]/err[i])/np.log(h[i-1]/h[i]) for i in range(1,len(h))]
+    print("slopes locais:", np.array(slopes))
+    # robust fit: remover outlier quando erro cresce > 10x
+    mask_ok = np.ones_like(err, bool)
+    for i in range(1,len(err)):
+        if err[i] > 10*err[i-1]: mask_ok[i]=False
+    coef = np.polyfit(np.log(h[mask_ok]), np.log(err[mask_ok]), 1)
+    print("slope fit robust:", coef[0])
