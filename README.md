@@ -12,9 +12,9 @@ The simulated domain is a unit square cavity with boundary conditions for zero v
 
 ## Mathematical Model
 ### Incompressible Navier-Stokes System
-$\rho \left( \frac{\partial \mathbf{u}}{\partial t} + \mathbf{u} \cdot \nabla \mathbf{u} \right) - \nabla \cdot (\mu \nabla \mathbf{u}) + \nabla p = \mathbf{f}$ \
+$\left( \frac{\partial \mathbf{u}}{\partial t} + \mathbf{u} \cdot \nabla \mathbf{u} \right) - \nabla \cdot (\nu \nabla \mathbf{u}) + \nabla p = \mathbf{F}$ 
 
-$\nabla \cdot \mathbf{u} = 0$
+$\hspace{5cm} \nabla \cdot \mathbf{u} = 0$
 
 ### Convection-Diffusion Equation for Temperature
 $\frac{\partial T}{\partial t} + \mathbf{u} \cdot \nabla T - \nabla \cdot (\kappa \nabla T) = Q$
