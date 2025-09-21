@@ -18,10 +18,10 @@ $$
 
 2. **Equações de Navier–Stokes (momentum):**
 
-$$
+$
 \frac{\partial \mathbf{u}}{\partial t} + (\mathbf{u}\cdot \nabla)\mathbf{u} 
 - \nu \Delta \mathbf{u} + \nabla p = \mathbf{f}
-$$
+
 
 3. **Equação de energia (transporte de calor):**
 
