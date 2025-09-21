@@ -1,38 +1,91 @@
-# Numerical Simulation of Convective-Diffusive Heat Transport by an Incompressible Viscous Flow
+# Simulação de Transporte de Calor com Elementos Finitos (P1-P1)
 
-In this work we present a numerical study of heat transport through a moving fluid, in which convection and diffusion processes are considered. The transport is carried out by a newtonian, laminar, irrotational, incompressible and transient flow of a fluid based on the Navier-Stokes equations and the Convection-Diffusion equation. This study provides a basis for more theoretical investigations involving stability, existence of weak solutions and extensions to newtonian fluids.
-
----
-
-## Square Cavity
-### Domain
-The simulated domain is a unit square cavity with boundary conditions for zero velocity prescribed at the walls and $\mathbf{u} = (1,0) m/s$ at the top.
+Este repositório contém uma implementação em **FreeFEM++** do problema de **transporte de calor** em um fluido em movimento, resolvido via **Método dos Elementos Finitos (FEM)** utilizando discretização **P1-P1** (linear para velocidade/temperatura e linear para pressão).
 
 ---
 
-## Mathematical Model
-### Incompressible Navier-Stokes System
-$\left( \frac{\partial \mathbf{u}}{\partial t} + \mathbf{u} \cdot \nabla \mathbf{u} \right) - \nabla \cdot (\nu \nabla \mathbf{u}) + \nabla p = \mathbf{F}$ 
+## 📖 Formulação Matemática
 
-$\hspace{5cm} \nabla \cdot \mathbf{u} = 0$
+O problema considerado é o transporte de calor em um fluido incompressível, modelado pelo sistema acoplado de **Navier–Stokes** com a **equação de energia**.
 
-### Convection-Diffusion Equation for Temperature
-$\frac{\partial T}{\partial t} + \mathbf{u} \cdot \nabla T - \nabla \cdot (\kappa \nabla T) = Q$
+### Equações Governantes
 
-Where:
-- $\mathbf{u}$: velocity field
-- $p$: pressure
-- $T$: temperature
-- $\mu$: viscosity (constant)
-- $\kappa$: thermal diffusivity
-- $Q$: heat source
-- $\rho$: density (constante)
+1. **Conservação da massa (incompressibilidade):**
+
+$$
+\nabla \cdot \mathbf{u} = 0
+$$
+
+2. **Equações de Navier–Stokes (momentum):**
+
+$$
+\frac{\partial \mathbf{u}}{\partial t} + (\mathbf{u}\cdot \nabla)\mathbf{u} 
+- \nu \Delta \mathbf{u} + \nabla p = \mathbf{f}
+$$
+
+3. **Equação de energia (transporte de calor):**
+
+$$
+\frac{\partial T}{\partial t} + (\mathbf{u}\cdot \nabla)T 
+- \kappa \Delta T = g
+$$
+
+onde:  
+- $\mathbf{u} = (u_1,u_2)$ é o campo de velocidades,  
+- $p$ é a pressão,  
+- $T$ é a temperatura,  
+- $\nu$ é a viscosidade cinemática,  
+- $\kappa$ é a difusividade térmica,  
+- $\mathbf{f}$ é um termo de força externa (e.g., gravidade),  
+- $g$ é uma fonte de calor volumétrica.
 
 ---
 
-## Implementation
-- **Approximation space:** P2 for velocity, P1 for pressure, P1 for temperature.
-- **Numerical Method:** Galerkin with inf-sup condition by Taylor-Hood elements.
-- **Time:** Semi-discrete formulation of time.
+## ⚙️ Formulação Variacional (FEM)
+
+Sejam $V_h, Q_h, W_h$ os espaços de elementos finitos P1 para velocidade, pressão e temperatura, respectivamente.  
+A formulação fraca consiste em encontrar $(\mathbf{u}_h, p_h, T_h) \in V_h \times Q_h \times W_h$ tais que:
+
+1. **Momento:**
+
+$$
+\int_\Omega \left( \frac{\partial \mathbf{u}_h}{\partial t}\cdot \mathbf{v}_h 
++ (\mathbf{u}_h\cdot \nabla)\mathbf{u}_h \cdot \mathbf{v}_h
++ \nu \nabla \mathbf{u}_h : \nabla \mathbf{v}_h 
+- p_h \, \nabla \cdot \mathbf{v}_h \right) \, dx 
+= \int_\Omega \mathbf{f}\cdot \mathbf{v}_h \, dx
+$$
+
+2. **Incompressibilidade:**
+
+$$
+\int_\Omega q_h \, \nabla \cdot \mathbf{u}_h \, dx = 0
+$$
+
+3. **Energia:**
+
+$$
+\int_\Omega \left( \frac{\partial T_h}{\partial t}\, \theta_h 
++ (\mathbf{u}_h\cdot \nabla T_h)\theta_h 
++ \kappa \nabla T_h \cdot \nabla \theta_h \right) \, dx
+= \int_\Omega g \, \theta_h \, dx
+$$
+
+para todo $(\mathbf{v}_h, q_h, \theta_h) \in V_h \times Q_h \times W_h$.
 
 ---
+
+## 🔧 Discretização Numérica
+
+- **Espaços de aproximação:**  
+  - Velocidade: P1 (linear contínuo)  
+  - Pressão: P1 (linear contínuo)  
+  - Temperatura: P1 (linear contínuo)  
+
+- **Método temporal:** esquema implícito ou semi-implícito (Euler Backward).  
+- **Estabilização:** opcionalmente, pode ser incluída estabilização **Petrov-Galerkin/GLS** para lidar com o par $P1-P1$ e termos advectivos dominantes.  
+
+---
+
+## 📂 Estrutura do Repositório
+
