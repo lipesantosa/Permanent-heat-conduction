@@ -25,8 +25,7 @@ $$
 3. **Equação de energia (transporte de calor):**
 
 $$
-\frac{\partial T}{\partial t} + (\mathbf{u}\cdot \nabla)T 
-- \kappa \Delta T = g
+\frac{\partial T}{\partial t} + (\mathbf{u}\cdot \nabla)T - \kappa \Delta T = g
 $$
 
 onde:  
@@ -48,11 +47,7 @@ A formulação fraca consiste em encontrar $(\mathbf{u}_h, p_h, T_h) \in V_h \ti
 1. **Momento:**
 
 $$
-\int_\Omega \left( \frac{\partial \mathbf{u}_h}{\partial t}\cdot \mathbf{v}_h 
-+ (\mathbf{u}_h\cdot \nabla)\mathbf{u}_h \cdot \mathbf{v}_h
-+ \nu \nabla \mathbf{u}_h : \nabla \mathbf{v}_h 
-- p_h \, \nabla \cdot \mathbf{v}_h \right) \, dx 
-= \int_\Omega \mathbf{f}\cdot \mathbf{v}_h \, dx
+\int_\Omega \left( \frac{\partial \mathbf{u}_h}{\partial t}\cdot \mathbf{v}_h + (\mathbf{u}_h\cdot \nabla)\mathbf{u}_h \cdot \mathbf{v}_h+ \nu \nabla \mathbf{u}_h : \nabla \mathbf{v}_h - p_h \, \nabla \cdot \mathbf{v}_h \right) \, dx = \int_\Omega \mathbf{f}\cdot \mathbf{v}_h \, dx
 $$
 
 2. **Incompressibilidade:**
@@ -64,10 +59,7 @@ $$
 3. **Energia:**
 
 $$
-\int_\Omega \left( \frac{\partial T_h}{\partial t}\, \theta_h 
-+ (\mathbf{u}_h\cdot \nabla T_h)\theta_h 
-+ \kappa \nabla T_h \cdot \nabla \theta_h \right) \, dx
-= \int_\Omega g \, \theta_h \, dx
+\int_\Omega \left( \frac{\partial T_h}{\partial t}\, \theta_h  + (\mathbf{u}_h\cdot \nabla T_h)\theta_h  + \kappa \nabla T_h \cdot \nabla \theta_h \right) \, dx= \int_\Omega g \, \theta_h \, dx
 $$
 
 para todo $(\mathbf{v}_h, q_h, \theta_h) \in V_h \times Q_h \times W_h$.
