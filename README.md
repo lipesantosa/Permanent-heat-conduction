@@ -35,7 +35,7 @@ onde:
 - $\nu$ é a viscosidade cinemática,  
 - $\kappa$ é a difusividade térmica,  
 - $\mathbf{f}$ é um termo de força externa (e.g., gravidade),  
-- $g$ é uma fonte de calor volumétrica.
+- $f_T$ é uma fonte de calor volumétrica.
 
 ---
 
