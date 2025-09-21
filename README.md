@@ -25,7 +25,7 @@ $$
 3. **Equação de energia (transporte de calor):**
 
 $$
-\frac{\partial T}{\partial t} + (\mathbf{u}\cdot \nabla)T - \kappa \Delta T = g
+\frac{\partial T}{\partial t} + (\mathbf{u}\cdot \nabla)T - \kappa \Delta T = f_T
 $$
 
 onde:  
